@@ -1,0 +1,16 @@
+server:
+  port: 8080
+
+spring:
+  ai:
+    ollama:
+      base-url: http://127.0.0.1:11434
+      chat:
+        options:
+          model: qwen2.5:3b
+      embedding:
+        options:
+          model: nomic-embed-text
+
+isms-p:
+  index-file: data/isms-p-company-docs.json
