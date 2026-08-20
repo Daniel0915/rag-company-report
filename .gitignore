@@ -12,3 +12,6 @@ build/
 
 # Runtime data (vector store JSON, upload sidecar)
 data/
+
+# Frontend (Vue/Vite) — build output is generated into static/ by the npmBuild Gradle task
+src/main/resources/static/

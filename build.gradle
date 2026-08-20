@@ -39,3 +39,31 @@ dependencyManagement {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+def frontendDir = "$projectDir/frontend"
+def npmCommand = org.gradle.internal.os.OperatingSystem.current().isWindows() ? 'npm.cmd' : 'npm'
+
+tasks.register('npmInstall', Exec) {
+    workingDir = frontendDir
+    inputs.file("$frontendDir/package.json")
+    outputs.dir("$frontendDir/node_modules")
+    commandLine npmCommand, 'install'
+}
+
+tasks.register('npmBuild', Exec) {
+    dependsOn tasks.npmInstall
+    workingDir = frontendDir
+    inputs.dir("$frontendDir/src")
+    inputs.file("$frontendDir/index.html")
+    inputs.file("$frontendDir/vite.config.ts")
+    outputs.dir("$projectDir/src/main/resources/static")
+    commandLine npmCommand, 'run', 'build'
+}
+
+tasks.named('processResources') {
+    dependsOn tasks.npmBuild
+}
+
+tasks.named('bootRun') {
+    dependsOn tasks.npmBuild
+}
