@@ -7,7 +7,7 @@ import com.ismsp.chatbot.dto.SourceItem;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.SimpleVectorStore;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.stereotype.Service;
@@ -31,11 +31,11 @@ public class CompanyChatService {
             """;
 
     private final ChatClient chatClient;
-    private final SimpleVectorStore vectorStore;
+    private final VectorStore vectorStore;
 
-    public CompanyChatService(ChatClient.Builder chatClientBuilder, SimpleVectorStore companyReportVectorStore) {
+    public CompanyChatService(ChatClient.Builder chatClientBuilder, VectorStore vectorStore) {
         this.chatClient = chatClientBuilder.build();
-        this.vectorStore = companyReportVectorStore;
+        this.vectorStore = vectorStore;
     }
 
     public ChatResponse chat(String question, String corpCode, int topK) {

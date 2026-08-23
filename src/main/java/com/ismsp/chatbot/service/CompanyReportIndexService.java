@@ -20,13 +20,13 @@ import com.ismsp.chatbot.dart.dto.WatchedCompany;
 import com.ismsp.chatbot.dto.IndexResult;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
-import org.springframework.ai.vectorstore.SimpleVectorStore;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
  * 워치리스트 기업(WatchedCompany.ALL)의 정기공시(사업/반기/분기보고서)를 DART에서 받아
- * 목차 단위(DartXmlDocumentReader)로 쪼갠 뒤 벡터스토어에 색인한다.
+ * 목차 단위(DartXmlDocumentReader)로 쪼갠 뒤 벡터스토어(Neo4j)에 색인한다.
  * rcept_no+파일명 단위 해시로 이미 색인된 문서는 재다운로드/재색인하지 않는다
  * (DART API 일일 호출 제한 때문에 같은 문서를 반복해서 받지 않도록).
  */
@@ -37,25 +37,21 @@ public class CompanyReportIndexService {
     }
 
     private final DartApiClient dartApiClient;
-    private final SimpleVectorStore vectorStore;
+    private final VectorStore vectorStore;
     private final TokenTextSplitter splitter = new TokenTextSplitter();
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final File sidecarFile;
-    private final File vectorStoreFile;
     private final Map<String, DocRecord> sidecar;
 
     public CompanyReportIndexService(
             DartApiClient dartApiClient,
-            SimpleVectorStore companyReportVectorStore,
-            @Value("${company-report.index-file:data/company-report-index.json}") String sidecarPath,
-            @Value("${company-report.vector-store-file:data/company-report-vectorstore.json}") String vectorStorePath
+            VectorStore vectorStore,
+            @Value("${company-report.index-file:data/company-report-index.json}") String sidecarPath
     ) {
         this.dartApiClient = dartApiClient;
-        this.vectorStore = companyReportVectorStore;
+        this.vectorStore = vectorStore;
         this.sidecarFile = new File(sidecarPath);
-        this.vectorStoreFile = new File(vectorStorePath);
         this.sidecarFile.getParentFile().mkdirs();
-        this.vectorStoreFile.getParentFile().mkdirs();
         this.sidecar = loadSidecar();
     }
 
@@ -131,7 +127,6 @@ public class CompanyReportIndexService {
         }
 
         if (totalChunks > 0) {
-            vectorStore.save(vectorStoreFile);
             persistSidecar();
         }
 

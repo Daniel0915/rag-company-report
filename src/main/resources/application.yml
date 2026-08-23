@@ -11,6 +11,18 @@ spring:
       embedding:
         options:
           model: nomic-embed-text
+    vectorstore:
+      neo4j:
+        initialize-schema: true
+        index-name: company-report-index
+        embedding-dimension: 768
+        distance-type: cosine
+        label: CompanyReportChunk
+  neo4j:
+    uri: ${NEO4J_URI:neo4j://localhost:7687}
+    authentication:
+      username: ${NEO4J_USERNAME:neo4j}
+      password: ${NEO4J_PASSWORD:companyreport}
 
 dart:
   api:
@@ -19,4 +31,3 @@ dart:
 
 company-report:
   index-file: data/company-report-index.json
-  vector-store-file: data/company-report-vectorstore.json
