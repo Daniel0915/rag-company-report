@@ -79,10 +79,9 @@ public class CompanyDocIndexService {
 
         List<Document> chunks = chunker.chunk(tagged);
 
-        // SimpleVectorStore doesn't implement delete(Filter.Expression) (throws
-        // UnsupportedOperationException) — only delete(List<String> ids) works, so we
-        // track each source file's chunk IDs ourselves, same as the TS version's
-        // chunks.json sidecar tracks chunk records per source_file.
+        // SimpleVectorStore는 delete(Filter.Expression)을 지원하지 않고(UnsupportedOperationException
+        // 발생) delete(List<String> ids)만 동작하므로, TS 버전의 chunks.json 사이드카가
+        // source_file별로 청크 레코드를 추적하던 것과 동일하게 파일별 청크 ID를 직접 관리한다.
         if (existing != null) {
             vectorStore.delete(existing.chunkIds());
         }
