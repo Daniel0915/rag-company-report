@@ -1,23 +1,22 @@
-export interface DomainOption {
-  value: string;
-  label: string;
+export interface WatchedCompany {
+  name: string;
+  corpCode: string;
+  stockCode: string;
 }
 
-export interface MetadataOptions {
-  docTypes: string[];
-  domains: DomainOption[];
-}
-
-export interface UploadResult {
+export interface IndexResult {
+  corpName: string;
+  rceptNo: string;
+  reportNm: string;
   status: string;
-  filename: string;
   chunks: number;
 }
 
 export interface SourceItem {
-  sourceFile: string;
-  docType: string | null;
-  chunkStrategy: string | null;
+  corpName: string;
+  reportNm: string;
+  rceptNo: string;
+  sectionTitle: string;
 }
 
 export interface ChatResponse {
@@ -25,12 +24,7 @@ export interface ChatResponse {
   sources: SourceItem[];
 }
 
-export interface ChatFilter {
-  doc_type: string;
-  domain: string;
-}
-
-const API = "/api/isms-p";
+const API = "/api/company-report";
 
 async function postJSON<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
@@ -43,32 +37,22 @@ async function postJSON<T>(url: string, body: unknown): Promise<T> {
   return data as T;
 }
 
-export async function fetchMetadataOptions(): Promise<MetadataOptions> {
-  const res = await fetch(`${API}/metadata-options`);
+export async function fetchWatchlist(): Promise<WatchedCompany[]> {
+  const res = await fetch(`${API}/watchlist`);
   return res.json();
 }
 
-export async function uploadDocument(
-  file: File,
-  docType: string,
-  domain: string,
-  year: string,
-): Promise<UploadResult> {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("doc_type", docType);
-  formData.append("domain", domain);
-  formData.append("year", year);
-  const res = await fetch(`${API}/upload`, { method: "POST", body: formData });
+export async function triggerIndex(bgnDe?: string, endDe?: string): Promise<IndexResult[]> {
+  const params = new URLSearchParams();
+  if (bgnDe) params.set("bgn_de", bgnDe);
+  if (endDe) params.set("end_de", endDe);
+  const query = params.toString();
+  const res = await fetch(`${API}/index${query ? `?${query}` : ""}`, { method: "POST" });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "업로드 실패");
-  return data as UploadResult;
+  if (!res.ok) throw new Error(data.error || "색인 실패");
+  return data as IndexResult[];
 }
 
-export function deleteAllDocuments(): Promise<{ ok: boolean }> {
-  return postJSON(`${API}/delete-all`, {});
-}
-
-export function sendChatMessage(question: string, filter: ChatFilter): Promise<ChatResponse> {
-  return postJSON(`${API}/chat`, { question, filter });
+export function sendChatMessage(question: string, corpCode: string): Promise<ChatResponse> {
+  return postJSON(`${API}/chat`, { question, corpCode });
 }
