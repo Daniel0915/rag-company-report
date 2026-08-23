@@ -14,3 +14,8 @@ spring:
 
 isms-p:
   index-file: data/isms-p-company-docs.json
+
+dart:
+  api:
+    base-url: https://opendart.fss.or.kr/api
+    key: ${DART_API_KEY:}
