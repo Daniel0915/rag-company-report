@@ -1,26 +1,40 @@
 <template>
-  <section class="step">
-    <h2>기업 정보 채팅</h2>
+  <div class="card elev-sm panel">
+    <div class="card-kicker">Step 02 · 질의응답</div>
+    <div class="card-title">기업 정보 채팅</div>
 
     <div class="chat-log" ref="chatLogEl">
       <div v-for="(m, i) in messages" :key="i" :class="['chat-bubble', m.role]">{{ m.content }}</div>
     </div>
 
-    <input
-      type="text"
-      v-model="question"
-      placeholder="선택한 기업의 공시(사업보고서/반기보고서 등)에 대해 질문하세요..."
-      @keydown.enter="sendChat"
-    />
-    <button :disabled="sending || !corpCode" @click="sendChat">전송</button>
+    <div class="chat-input-row">
+      <input
+        type="text"
+        class="input"
+        v-model="question"
+        placeholder="선택한 기업의 공시(사업보고서/반기보고서 등)에 대해 질문하세요..."
+        @keydown.enter="sendChat"
+      />
+      <button
+        type="button"
+        class="btn btn-primary btn-icon"
+        :disabled="sending || !corpCode"
+        @click="sendChat"
+        aria-label="전송"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </button>
+    </div>
 
-    <h3 class="muted">출처</h3>
-    <div>
+    <h6 class="text-muted section-label">출처 공시</h6>
+    <div class="source-list">
       <div v-for="(s, i) in sources" :key="i" class="source-item">
-        [{{ s.corpName }} / {{ s.reportNm }} ({{ s.rceptNo }})] {{ s.sectionTitle }}
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+        <span class="tag tag-outline">{{ s.corpName }}</span>
+        <span class="source-text">{{ s.reportNm }} ({{ s.rceptNo }}) · {{ s.sectionTitle }}</span>
       </div>
     </div>
-  </section>
+  </div>
 </template>
 
 <script setup lang="ts">
