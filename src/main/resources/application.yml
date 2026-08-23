@@ -10,12 +10,12 @@ spring:
           model: qwen2.5:3b
       embedding:
         options:
-          model: nomic-embed-text
+          model: bge-m3
     vectorstore:
       neo4j:
         initialize-schema: true
         index-name: company-report-index
-        embedding-dimension: 768
+        embedding-dimension: 1024
         distance-type: cosine
         label: CompanyReportChunk
   neo4j:
