@@ -51,15 +51,28 @@ public class DartApiClient {
 
     /** 공시검색: 특정 기업의 기간 내 공시 목록을 조회한다. */
     public DartListResponse searchDisclosures(String corpCode, LocalDate bgnDe, LocalDate endDe, int pageNo, int pageCount) {
+        return searchDisclosures(corpCode, bgnDe, endDe, null, pageNo, pageCount);
+    }
+
+    /**
+     * 공시검색: pblntfTy(공시유형)로 좁혀서 조회한다. "A"=정기공시(사업/반기/분기보고서)처럼
+     * 회사 정보 챗봇에 의미 있는 공시만 필터링할 때 쓴다. null이면 필터 없이 전체 조회.
+     */
+    public DartListResponse searchDisclosures(String corpCode, LocalDate bgnDe, LocalDate endDe, String pblntfTy, int pageNo, int pageCount) {
         DartListResponse response = restClient.get()
-                .uri(uriBuilder -> uriBuilder.path("/list.json")
-                        .queryParam("crtfc_key", apiKey)
-                        .queryParam("corp_code", corpCode)
-                        .queryParam("bgn_de", bgnDe.format(DATE_FORMAT))
-                        .queryParam("end_de", endDe.format(DATE_FORMAT))
-                        .queryParam("page_no", pageNo)
-                        .queryParam("page_count", pageCount)
-                        .build())
+                .uri(uriBuilder -> {
+                    uriBuilder.path("/list.json")
+                            .queryParam("crtfc_key", apiKey)
+                            .queryParam("corp_code", corpCode)
+                            .queryParam("bgn_de", bgnDe.format(DATE_FORMAT))
+                            .queryParam("end_de", endDe.format(DATE_FORMAT))
+                            .queryParam("page_no", pageNo)
+                            .queryParam("page_count", pageCount);
+                    if (pblntfTy != null && !pblntfTy.isBlank()) {
+                        uriBuilder.queryParam("pblntf_ty", pblntfTy);
+                    }
+                    return uriBuilder.build();
+                })
                 .retrieve()
                 .body(DartListResponse.class);
 

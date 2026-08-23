@@ -16,3 +16,7 @@ dart:
   api:
     base-url: https://opendart.fss.or.kr/api
     key: ${DART_API_KEY:}
+
+company-report:
+  index-file: data/company-report-index.json
+  vector-store-file: data/company-report-vectorstore.json
