@@ -24,7 +24,39 @@ export interface ChatResponse {
   sources: SourceItem[];
 }
 
+export interface IndexedChunk {
+  id: string;
+  corpCode: string;
+  corpName: string;
+  reportNm: string;
+  rceptNo: string;
+  pblntfTy: string;
+  docType: string;
+  sectionTitle: string;
+  rceptDt: string;
+  textPreview: string;
+}
+
+export interface IndexedChunkPage {
+  items: IndexedChunk[];
+  total: number;
+}
+
+export interface AdminDocument {
+  id: string;
+  corpCode: string;
+  corpName: string;
+  title: string;
+  category: string;
+  description: string;
+  docDate: string;
+  fileName: string;
+  uploadedAt: string;
+  chunkCount: number;
+}
+
 const API = "/api/company-report";
+const ADMIN_API = "/api/admin/documents";
 
 async function postJSON<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
@@ -49,10 +81,47 @@ export async function triggerIndex(bgnDe?: string, endDe?: string): Promise<Inde
   const query = params.toString();
   const res = await fetch(`${API}/index${query ? `?${query}` : ""}`, { method: "POST" });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "색인 실패");
+  if (!res.ok) throw new Error(data.error || "공시 가져오기 실패");
   return data as IndexResult[];
 }
 
 export function sendChatMessage(question: string, corpCode: string): Promise<ChatResponse> {
   return postJSON(`${API}/chat`, { question, corpCode });
+}
+
+export async function fetchAdminDocuments(): Promise<AdminDocument[]> {
+  const res = await fetch(ADMIN_API);
+  if (!res.ok) throw new Error("문서 목록을 불러오지 못했습니다");
+  return res.json();
+}
+
+export async function uploadAdminDocument(formData: FormData): Promise<AdminDocument> {
+  const res = await fetch(ADMIN_API, { method: "POST", body: formData });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "업로드 실패");
+  return data as AdminDocument;
+}
+
+export async function fetchIndexedChunks(params: {
+  corpCode?: string;
+  sourceType?: string;
+  limit: number;
+  offset: number;
+}): Promise<IndexedChunkPage> {
+  const q = new URLSearchParams();
+  if (params.corpCode) q.set("corpCode", params.corpCode);
+  if (params.sourceType) q.set("sourceType", params.sourceType);
+  q.set("limit", String(params.limit));
+  q.set("offset", String(params.offset));
+  const res = await fetch(`/api/admin/indexed-chunks?${q.toString()}`);
+  if (!res.ok) throw new Error("저장된 데이터를 불러오지 못했습니다");
+  return res.json();
+}
+
+export async function deleteAdminDocument(id: string): Promise<void> {
+  const res = await fetch(`${ADMIN_API}/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}) as { error?: string });
+    throw new Error(data.error || "삭제 실패");
+  }
 }

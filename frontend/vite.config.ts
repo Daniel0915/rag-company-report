@@ -13,5 +13,11 @@ export default defineConfig({
   build: {
     outDir: fileURLToPath(new URL("../src/main/resources/static", import.meta.url)),
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        admin: fileURLToPath(new URL("./admin.html", import.meta.url)),
+      },
+    },
   },
 });

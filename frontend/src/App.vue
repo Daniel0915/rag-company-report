@@ -7,11 +7,12 @@
       기업 리포트 챗봇
     </span>
     <a href="#" aria-current="page">DART 공시 기반</a>
+    <a href="./admin.html">관리자</a>
   </nav>
   <main class="page">
     <header class="hero">
       <h1>기업 리포트 챗봇</h1>
-      <p class="text-muted">관심 기업의 DART 공시(사업보고서 등)를 색인하고, AI에게 바로 물어보세요.</p>
+      <p class="text-muted">관심 기업의 DART 공시(사업보고서 등)를 가져와 저장하고, AI에게 바로 물어보세요.</p>
     </header>
     <div class="layout-grid">
       <CompanySelector :companies="companies" v-model="selectedCorpCode" />

@@ -25,8 +25,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
- * 워치리스트 기업(WatchedCompany.ALL)의 정기공시(사업/반기/분기보고서)를 DART에서 받아
- * 목차 단위(DartXmlDocumentReader)로 쪼갠 뒤 벡터스토어(Neo4j)에 색인한다.
+ * 워치리스트 기업(WatchedCompany.ALL)의 정기공시(사업/반기/분기보고서)와 지분공시
+ * (대량보유상황보고서, 임원ㆍ주요주주소유보고서 등)를 DART에서 받아 목차 단위
+ * (DartXmlDocumentReader)로 쪼갠 뒤 벡터스토어(Neo4j)에 색인한다.
  * rcept_no+파일명 단위 해시로 이미 색인된 문서는 재다운로드/재색인하지 않는다
  * (DART API 일일 호출 제한 때문에 같은 문서를 반복해서 받지 않도록).
  */
@@ -55,7 +56,14 @@ public class CompanyReportIndexService {
         this.sidecar = loadSidecar();
     }
 
-    /** 워치리스트 전체 기업의 기간 내 정기공시를 색인한다. */
+    /**
+     * 색인 대상 공시유형(pblntf_ty). A=정기공시(사업/반기/분기보고서),
+     * D=지분공시(주식등의대량보유상황보고서, 임원ㆍ주요주주특정증권등소유상황보고서 등).
+     */
+    private static final List<String> DISCLOSURE_TYPES = List.of("A", "D");
+    private static final int PAGE_SIZE = 100;
+
+    /** 워치리스트 전체 기업의 기간 내 정기공시+지분공시를 색인한다. */
     public synchronized List<IndexResult> indexWatchedCompanies(LocalDate bgnDe, LocalDate endDe) {
         List<IndexResult> results = new ArrayList<>();
         for (WatchedCompany company : WatchedCompany.ALL) {
@@ -65,19 +73,35 @@ public class CompanyReportIndexService {
     }
 
     private List<IndexResult> indexCompany(WatchedCompany company, LocalDate bgnDe, LocalDate endDe) {
-        DartListResponse response = dartApiClient.searchDisclosures(company.corpCode(), bgnDe, endDe, "A", 1, 50);
-        if (!response.hasData()) {
-            return List.of();
-        }
-
         List<IndexResult> results = new ArrayList<>();
-        for (DisclosureItem item : response.list()) {
-            results.add(indexDisclosure(company, item));
+        for (String pblntfTy : DISCLOSURE_TYPES) {
+            for (DisclosureItem item : searchAllPages(company.corpCode(), bgnDe, endDe, pblntfTy)) {
+                results.add(indexDisclosure(company, item, pblntfTy));
+            }
         }
         return results;
     }
 
-    private IndexResult indexDisclosure(WatchedCompany company, DisclosureItem item) {
+    /** total_page까지 전부 순회해서 기간 내 해당 공시유형의 모든 공시를 모은다. */
+    private List<DisclosureItem> searchAllPages(String corpCode, LocalDate bgnDe, LocalDate endDe, String pblntfTy) {
+        List<DisclosureItem> all = new ArrayList<>();
+        int pageNo = 1;
+        while (true) {
+            DartListResponse response = dartApiClient.searchDisclosures(corpCode, bgnDe, endDe, pblntfTy, pageNo, PAGE_SIZE);
+            if (!response.hasData()) {
+                break;
+            }
+            all.addAll(response.list());
+            int totalPage = response.totalPage() != null ? response.totalPage() : 1;
+            if (pageNo >= totalPage) {
+                break;
+            }
+            pageNo++;
+        }
+        return all;
+    }
+
+    private IndexResult indexDisclosure(WatchedCompany company, DisclosureItem item, String pblntfTy) {
         Map<String, byte[]> files = dartApiClient.fetchDocument(item.rceptNo());
 
         int totalChunks = 0;
@@ -102,7 +126,8 @@ public class CompanyReportIndexService {
                     "stock_code", company.stockCode(),
                     "rcept_no", item.rceptNo(),
                     "report_nm", item.reportNm(),
-                    "rcept_dt", item.rceptDt()
+                    "rcept_dt", item.rceptDt(),
+                    "pblntf_ty", pblntfTy
             );
             List<Document> tagged = sections.stream()
                     .map(d -> {

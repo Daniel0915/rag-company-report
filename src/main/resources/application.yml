@@ -2,6 +2,10 @@ server:
   port: 8080
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 30MB
+      max-request-size: 30MB
   ai:
     ollama:
       base-url: http://127.0.0.1:11434
@@ -31,3 +35,7 @@ dart:
 
 company-report:
   index-file: data/company-report-index.json
+
+admin-document:
+  registry-file: data/admin-documents.json
+  upload-dir: data/admin-uploads
