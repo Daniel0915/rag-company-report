@@ -13,7 +13,7 @@
         class="input"
         v-model="question"
         placeholder="선택한 기업의 공시(사업보고서/반기보고서 등)에 대해 질문하세요..."
-        @keydown.enter="sendChat"
+        @keydown.enter="onEnter"
       />
       <button
         type="button"
@@ -61,7 +61,13 @@ async function scrollToBottom() {
   if (chatLogEl.value) chatLogEl.value.scrollTop = chatLogEl.value.scrollHeight;
 }
 
+function onEnter(e: KeyboardEvent) {
+  if (e.isComposing) return;
+  sendChat();
+}
+
 async function sendChat() {
+  if (sending.value) return;
   const q = question.value.trim();
   if (!q || !props.corpCode) return;
   sending.value = true;
