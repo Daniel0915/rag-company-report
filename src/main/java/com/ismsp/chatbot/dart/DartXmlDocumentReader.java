@@ -67,10 +67,13 @@ public class DartXmlDocumentReader implements DocumentReader {
             Heading heading = headings.get(i);
             int bodyEnd = (i + 1 < headings.size()) ? headings.get(i + 1).tagStart() : content.length();
             String body = stripTags(content.substring(heading.tagEnd(), bodyEnd));
-            String text = body.isBlank() ? heading.title() : heading.title() + "\n\n" + body;
-            if (!text.isBlank()) {
-                documents.add(buildDocument(heading.title(), heading.level(), order++, text));
+            // 본문 없이 곧바로 하위 헤딩으로 이어지는 상위 목차(예: "II. 사업의 내용")는
+            // 제목만 있는 빈 청크가 되어 실제 내용 청크보다 검색 유사도가 더 높게 나오므로 건너뛴다.
+            if (body.isBlank()) {
+                continue;
             }
+            String text = heading.title() + "\n\n" + body;
+            documents.add(buildDocument(heading.title(), heading.level(), order++, text));
         }
 
         return documents;
