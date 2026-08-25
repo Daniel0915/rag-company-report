@@ -1,6 +1,6 @@
 <template>
   <div class="card elev-sm panel">
-    <div class="card-kicker">Step 04 · 업로드된 문서</div>
+    <div class="card-kicker">Step 05 · 업로드된 문서</div>
     <div class="card-title">등록된 문서 목록</div>
 
     <p v-if="!documents.length" class="text-muted">아직 업로드된 문서가 없습니다.</p>

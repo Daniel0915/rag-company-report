@@ -1,6 +1,6 @@
 <template>
   <div class="card elev-sm panel">
-    <div class="card-kicker">Step 03 · 문서 업로드</div>
+    <div class="card-kicker">Step 04 · 문서 업로드</div>
     <div class="card-title">PDF 문서 등록</div>
 
     <form @submit.prevent="submit">

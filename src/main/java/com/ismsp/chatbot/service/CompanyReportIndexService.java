@@ -39,6 +39,7 @@ public class CompanyReportIndexService {
 
     private final DartApiClient dartApiClient;
     private final VectorStore vectorStore;
+    private final DisclosureGraphService disclosureGraphService;
     private final TokenTextSplitter splitter = new TokenTextSplitter();
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final File sidecarFile;
@@ -47,10 +48,12 @@ public class CompanyReportIndexService {
     public CompanyReportIndexService(
             DartApiClient dartApiClient,
             VectorStore vectorStore,
+            DisclosureGraphService disclosureGraphService,
             @Value("${company-report.index-file:data/company-report-index.json}") String sidecarPath
     ) {
         this.dartApiClient = dartApiClient;
         this.vectorStore = vectorStore;
+        this.disclosureGraphService = disclosureGraphService;
         this.sidecarFile = new File(sidecarPath);
         this.sidecarFile.getParentFile().mkdirs();
         this.sidecar = loadSidecar();
@@ -102,6 +105,8 @@ public class CompanyReportIndexService {
     }
 
     private IndexResult indexDisclosure(WatchedCompany company, DisclosureItem item, String pblntfTy) {
+        disclosureGraphService.recordDisclosure(company, item, pblntfTy);
+
         Map<String, byte[]> files = dartApiClient.fetchDocument(item.rceptNo());
 
         int totalChunks = 0;

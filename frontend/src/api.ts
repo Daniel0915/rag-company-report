@@ -42,6 +42,18 @@ export interface IndexedChunkPage {
   total: number;
 }
 
+export interface FilerDisclosure {
+  filerName: string;
+  reportNm: string;
+  rceptDt: string;
+  rceptNo: string;
+}
+
+export interface RelatedCompany {
+  corpCode: string;
+  corpName: string;
+}
+
 export interface AdminDocument {
   id: string;
   corpCode: string;
@@ -115,6 +127,18 @@ export async function fetchIndexedChunks(params: {
   q.set("offset", String(params.offset));
   const res = await fetch(`/api/admin/indexed-chunks?${q.toString()}`);
   if (!res.ok) throw new Error("저장된 데이터를 불러오지 못했습니다");
+  return res.json();
+}
+
+export async function fetchFilers(corpCode: string): Promise<FilerDisclosure[]> {
+  const res = await fetch(`/api/admin/graph/filers?corpCode=${encodeURIComponent(corpCode)}`);
+  if (!res.ok) throw new Error("제출인 목록을 불러오지 못했습니다");
+  return res.json();
+}
+
+export async function fetchRelatedCompanies(filerName: string): Promise<RelatedCompany[]> {
+  const res = await fetch(`/api/admin/graph/related-companies?filerName=${encodeURIComponent(filerName)}`);
+  if (!res.ok) throw new Error("관련 기업을 불러오지 못했습니다");
   return res.json();
 }
 

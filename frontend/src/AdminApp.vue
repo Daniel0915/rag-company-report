@@ -19,6 +19,7 @@
     <div class="admin-stack">
       <DartIndexPanel />
       <IndexedDataViewer :companies="companies" />
+      <RelationshipExplorer :companies="companies" />
     </div>
 
     <div class="layout-grid">
@@ -32,6 +33,7 @@
 import { ref, onMounted } from "vue";
 import DartIndexPanel from "./components/DartIndexPanel.vue";
 import IndexedDataViewer from "./components/IndexedDataViewer.vue";
+import RelationshipExplorer from "./components/RelationshipExplorer.vue";
 import AdminDocumentUpload from "./components/AdminDocumentUpload.vue";
 import AdminDocumentList from "./components/AdminDocumentList.vue";
 import { fetchWatchlist, fetchAdminDocuments, type WatchedCompany, type AdminDocument } from "./api";

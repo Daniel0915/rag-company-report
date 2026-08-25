@@ -67,11 +67,20 @@ ollama pull bge-m3
 **Neo4j** (Docker 예시):
 
 ```bash
-docker run -d --name neo4j \
+docker volume create company-report-neo4j-data
+docker volume create company-report-neo4j-logs
+
+docker run -d --name company-report-neo4j \
   -p 7474:7474 -p 7687:7687 \
   -e NEO4J_AUTH=neo4j/companyreport \
-  neo4j:5
+  -v company-report-neo4j-data:/data \
+  -v company-report-neo4j-logs:/logs \
+  neo4j:5.15
 ```
+
+`-v`로 이름 있는 볼륨을 지정해야 `docker rm`으로 컨테이너를 지웠다가 같은 명령으로
+다시 만들어도 색인된 데이터가 그대로 유지됩니다(볼륨을 안 붙이면 컨테이너 삭제 시
+데이터도 함께 사라집니다).
 
 기본 접속 정보는 `application.yml`에 설정되어 있으며, 필요 시 환경변수로 덮어쓸 수
 있습니다: `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`.
