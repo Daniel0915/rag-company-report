@@ -43,7 +43,19 @@
     </div>
 
     <div class="chat-log" ref="chatLogEl">
-      <div v-for="(m, i) in messages" :key="i" :class="['chat-bubble', m.role]">{{ m.content }}</div>
+      <div
+        v-for="(m, i) in messages"
+        :key="i"
+        :class="['chat-bubble', m.role]"
+      >
+        <div v-if="m.role === 'assistant'" class="markdown-body" v-html="renderMarkdown(m.content)"></div>
+        <template v-else>{{ m.content }}</template>
+      </div>
+      <div v-if="sending" class="chat-bubble assistant typing" aria-live="polite" aria-label="답변 생성 중">
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+      </div>
     </div>
 
     <div class="chat-input-row">
@@ -78,8 +90,17 @@
 
 <script setup lang="ts">
 import { ref, nextTick, watch } from "vue";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 import { sendChatMessage, type ChatProvider, type SourceItem } from "../api";
 import { getMessages, getRecentHistory, saveMessage } from "../chatHistory";
+
+marked.setOptions({ breaks: true, gfm: true });
+
+function renderMarkdown(content: string): string {
+  const html = marked.parse(content, { async: false }) as string;
+  return DOMPurify.sanitize(html);
+}
 
 const props = defineProps<{
   corpCode: string;
