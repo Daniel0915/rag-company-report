@@ -10,6 +10,10 @@ build/
 # OS
 .DS_Store
 
+# 환경변수/키 (DART_API_KEY, GEMINI_API_KEY 등 - 절대 커밋 금지)
+.env
+.env.*
+
 # Runtime data (vector store JSON, upload sidecar)
 data/
 

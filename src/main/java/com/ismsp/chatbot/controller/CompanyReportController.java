@@ -6,6 +6,7 @@ import java.util.List;
 import com.ismsp.chatbot.dart.dto.WatchedCompany;
 import com.ismsp.chatbot.dto.ChatRequest;
 import com.ismsp.chatbot.dto.ChatResponse;
+import com.ismsp.chatbot.dto.ChatTurnDto;
 import com.ismsp.chatbot.dto.IndexResult;
 import com.ismsp.chatbot.service.CompanyChatService;
 import com.ismsp.chatbot.service.CompanyReportIndexService;
@@ -44,6 +45,8 @@ public class CompanyReportController {
 
     @PostMapping("/api/company-report/chat")
     public ChatResponse chat(@RequestBody ChatRequest request) {
-        return chatService.chat(request.question(), request.corpCode(), 4);
+        List<ChatTurnDto> history = request.history() != null ? request.history() : List.of();
+        int topK = request.topK() != null ? Math.min(Math.max(request.topK(), 1), 20) : 4;
+        return chatService.chat(request.question(), request.corpCode(), topK, history, request.provider());
     }
 }

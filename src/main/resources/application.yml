@@ -31,6 +31,12 @@ dart:
     base-url: https://opendart.fss.or.kr/api
     key: ${DART_API_KEY:}
 
+gemini:
+  api:
+    base-url: https://generativelanguage.googleapis.com/v1beta
+    key: ${GEMINI_API_KEY:}
+    model: gemini-flash-latest
+
 company-report:
   index-file: data/company-report-index.json
 

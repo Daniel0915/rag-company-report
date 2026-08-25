@@ -286,6 +286,80 @@ main.page {
 
 .admin-doc-desc { margin: var(--space-2) 0 0; font-size: 13px; color: var(--color-muted); }
 
+/* — topK 슬라이더 — */
+.topk-control { margin-bottom: var(--space-3); }
+
+.topk-control label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--color-text);
+}
+
+.topk-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent-tint);
+  color: var(--color-accent-hover);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.topk-control input[type="range"] {
+  width: 100%;
+  accent-color: var(--color-accent);
+}
+
+.topk-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+/* — 답변 모델(로컬/클라우드) 토글 — */
+.provider-control { margin-bottom: var(--space-3); }
+
+.provider-control label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--color-text);
+}
+
+.provider-toggle {
+  display: flex;
+  gap: 6px;
+  padding: 3px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-muted, var(--color-accent-tint));
+}
+
+.provider-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 6px 10px;
+  border-radius: var(--radius-full);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.provider-btn.active {
+  background: var(--color-surface);
+  color: var(--color-accent-hover);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
 .admin-stack {
   display: grid;
   gap: var(--space-6);

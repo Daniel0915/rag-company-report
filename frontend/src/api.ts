@@ -97,8 +97,21 @@ export async function triggerIndex(bgnDe?: string, endDe?: string): Promise<Inde
   return data as IndexResult[];
 }
 
-export function sendChatMessage(question: string, corpCode: string): Promise<ChatResponse> {
-  return postJSON(`${API}/chat`, { question, corpCode });
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export type ChatProvider = "local" | "cloud";
+
+export function sendChatMessage(
+  question: string,
+  corpCode: string,
+  history: ChatTurn[] = [],
+  topK?: number,
+  provider: ChatProvider = "local"
+): Promise<ChatResponse> {
+  return postJSON(`${API}/chat`, { question, corpCode, history, topK, provider });
 }
 
 export async function fetchAdminDocuments(): Promise<AdminDocument[]> {

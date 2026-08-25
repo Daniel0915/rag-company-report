@@ -3,6 +3,38 @@
     <div class="card-kicker">Step 02 · 질의응답</div>
     <div class="card-title">기업 정보 채팅</div>
 
+    <div class="provider-control">
+      <label>답변 모델</label>
+      <div class="provider-toggle">
+        <button
+          type="button"
+          :class="['provider-btn', { active: provider === 'local' }]"
+          @click="provider = 'local'"
+        >
+          로컬 (qwen2.5:3b)
+        </button>
+        <button
+          type="button"
+          :class="['provider-btn', { active: provider === 'cloud' }]"
+          @click="provider = 'cloud'"
+        >
+          클라우드 (Gemini)
+        </button>
+      </div>
+    </div>
+
+    <div class="topk-control">
+      <label for="topk-slider">
+        검색 범위(topK)
+        <span class="topk-value">{{ topK }}</span>
+      </label>
+      <input id="topk-slider" type="range" min="1" max="20" v-model.number="topK" />
+      <p class="topk-hint">
+        질문마다 근거로 가져올 공시 조각 수예요. 낮으면 빠르지만 원하는 내용이 빠질 수 있고,
+        높으면 더 폭넓게 찾지만 답변이 느려져요.
+      </p>
+    </div>
+
     <div class="chat-log" ref="chatLogEl">
       <div v-for="(m, i) in messages" :key="i" :class="['chat-bubble', m.role]">{{ m.content }}</div>
     </div>
@@ -38,8 +70,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from "vue";
-import { sendChatMessage, type SourceItem } from "../api";
+import { ref, nextTick, watch } from "vue";
+import { sendChatMessage, type ChatProvider, type SourceItem } from "../api";
+import { getMessages, getRecentHistory, saveMessage } from "../chatHistory";
 
 const props = defineProps<{
   corpCode: string;
@@ -50,6 +83,10 @@ interface ChatMessage {
   content: string;
 }
 
+const HISTORY_LIMIT = 6;
+
+const topK = ref(6);
+const provider = ref<ChatProvider>("local");
 const question = ref("");
 const sending = ref(false);
 const messages = ref<ChatMessage[]>([]);
@@ -61,6 +98,19 @@ async function scrollToBottom() {
   if (chatLogEl.value) chatLogEl.value.scrollTop = chatLogEl.value.scrollHeight;
 }
 
+async function loadHistory(corpCode: string) {
+  messages.value = [];
+  sources.value = [];
+  if (!corpCode) return;
+  const stored = await getMessages(corpCode);
+  messages.value = stored.map((m) => ({ role: m.role, content: m.content }));
+  const last = stored[stored.length - 1];
+  if (last?.sources) sources.value = last.sources;
+  scrollToBottom();
+}
+
+watch(() => props.corpCode, (code) => loadHistory(code), { immediate: true });
+
 function onEnter(e: KeyboardEvent) {
   if (e.isComposing) return;
   sendChat();
@@ -70,16 +120,22 @@ async function sendChat() {
   if (sending.value) return;
   const q = question.value.trim();
   if (!q || !props.corpCode) return;
+  const corpCode = props.corpCode;
   sending.value = true;
+  const history = await getRecentHistory(corpCode, HISTORY_LIMIT);
   messages.value.push({ role: "user", content: q });
   question.value = "";
   scrollToBottom();
+  await saveMessage({ corpCode, role: "user", content: q, createdAt: Date.now() });
   try {
-    const { answer, sources: srcs } = await sendChatMessage(q, props.corpCode);
+    const { answer, sources: srcs } = await sendChatMessage(q, corpCode, history, topK.value, provider.value);
     messages.value.push({ role: "assistant", content: answer });
     sources.value = srcs;
+    await saveMessage({ corpCode, role: "assistant", content: answer, sources: srcs, createdAt: Date.now() });
   } catch (err) {
-    messages.value.push({ role: "assistant", content: `오류: ${(err as Error).message}` });
+    const message = `오류: ${(err as Error).message}`;
+    messages.value.push({ role: "assistant", content: message });
+    await saveMessage({ corpCode, role: "assistant", content: message, createdAt: Date.now() });
   } finally {
     sending.value = false;
     scrollToBottom();
