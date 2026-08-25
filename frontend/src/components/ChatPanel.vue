@@ -15,10 +15,17 @@
         </button>
         <button
           type="button"
-          :class="['provider-btn', { active: provider === 'cloud' }]"
-          @click="provider = 'cloud'"
+          :class="['provider-btn', { active: provider === 'gemini' }]"
+          @click="provider = 'gemini'"
         >
-          클라우드 (Gemini)
+          Gemini
+        </button>
+        <button
+          type="button"
+          :class="['provider-btn', { active: provider === 'claude' }]"
+          @click="provider = 'claude'"
+        >
+          Claude
         </button>
       </div>
     </div>

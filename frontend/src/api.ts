@@ -102,7 +102,7 @@ export interface ChatTurn {
   content: string;
 }
 
-export type ChatProvider = "local" | "cloud";
+export type ChatProvider = "local" | "gemini" | "claude";
 
 export function sendChatMessage(
   question: string,

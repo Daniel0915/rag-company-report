@@ -3,6 +3,7 @@ package com.ismsp.chatbot.service;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import com.ismsp.chatbot.claude.ClaudeCliClient;
 import com.ismsp.chatbot.dto.ChatResponse;
 import com.ismsp.chatbot.dto.ChatTurnDto;
 import com.ismsp.chatbot.dto.FilerDisclosureDto;
@@ -56,38 +57,41 @@ public class CompanyChatService {
 
     private final ChatClient chatClient;
     private final GeminiApiClient geminiApiClient;
+    private final ClaudeCliClient claudeCliClient;
     private final CompanyVectorStoreRegistry vectorStoreRegistry;
     private final DisclosureGraphService disclosureGraphService;
 
     public CompanyChatService(
             ChatClient.Builder chatClientBuilder,
             GeminiApiClient geminiApiClient,
+            ClaudeCliClient claudeCliClient,
             CompanyVectorStoreRegistry vectorStoreRegistry,
             DisclosureGraphService disclosureGraphService
     ) {
         this.chatClient = chatClientBuilder.build();
         this.geminiApiClient = geminiApiClient;
+        this.claudeCliClient = claudeCliClient;
         this.vectorStoreRegistry = vectorStoreRegistry;
         this.disclosureGraphService = disclosureGraphService;
     }
 
-    /** provider: "local"(Ollama qwen2.5:3b, 기본값) 또는 "cloud"(Gemini). */
+    /** provider: "local"(Ollama qwen2.5:3b, 기본값), "gemini", 또는 "claude"(claude CLI). */
     public ChatResponse chat(String question, String corpCode, int topK, List<ChatTurnDto> history, String provider) {
         if (corpCode == null || corpCode.isBlank()) {
             throw new IllegalArgumentException("corpCode는 필수입니다");
         }
-        boolean cloud = "cloud".equals(provider);
+        String llm = normalizeProvider(provider);
 
         String searchQuery = (history == null || history.isEmpty())
                 ? question
-                : rewriteQuery(question, history, cloud);
+                : rewriteQuery(question, history, llm);
 
         SearchRequest searchRequest = SearchRequest.builder().query(searchQuery).topK(topK).build();
         List<Document> context = vectorStoreRegistry.forCompany(corpCode).similaritySearch(searchRequest);
         String contextText = buildContextText(context);
         String graphText   = buildGraphText(corpCode);
 
-        String answer = complete(cloud, SYSTEM_PROMPT_TEMPLATE.formatted(contextText, graphText), question);
+        String answer = complete(llm, SYSTEM_PROMPT_TEMPLATE.formatted(contextText, graphText), question);
 
         List<SourceItem> sources = context.stream()
                 .map(d -> new SourceItem(
@@ -101,24 +105,37 @@ public class CompanyChatService {
         return new ChatResponse(answer, sources);
     }
 
-    private String rewriteQuery(String question, List<ChatTurnDto> history, boolean cloud) {
+    private String rewriteQuery(String question, List<ChatTurnDto> history, String llm) {
         String historyText = history.stream()
                 .map(t -> ("user".equals(t.role()) ? "사용자: " : "어시스턴트: ") + t.content())
                 .collect(Collectors.joining("\n"));
 
-        String rewritten = complete(cloud, "", REWRITE_PROMPT_TEMPLATE.formatted(historyText, question));
+        String rewritten = complete(llm, "", REWRITE_PROMPT_TEMPLATE.formatted(historyText, question));
         return (rewritten == null || rewritten.isBlank()) ? question : rewritten.trim();
     }
 
-    private String complete(boolean cloud, String systemPrompt, String userPrompt) {
-        if (cloud) {
-            return geminiApiClient.generate(systemPrompt, userPrompt);
+    private String normalizeProvider(String provider) {
+        if ("gemini".equals(provider) || "cloud".equals(provider)) {
+            return "gemini";
         }
-        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
-        if (systemPrompt != null && !systemPrompt.isBlank()) {
-            spec = spec.system(systemPrompt);
+        if ("claude".equals(provider)) {
+            return "claude";
         }
-        return spec.user(userPrompt).call().content();
+        return "local";
+    }
+
+    private String complete(String llm, String systemPrompt, String userPrompt) {
+        return switch (llm) {
+            case "gemini" -> geminiApiClient.generate(systemPrompt, userPrompt);
+            case "claude" -> claudeCliClient.generate(systemPrompt, userPrompt);
+            default -> {
+                ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
+                if (systemPrompt != null && !systemPrompt.isBlank()) {
+                    spec = spec.system(systemPrompt);
+                }
+                yield spec.user(userPrompt).call().content();
+            }
+        };
     }
 
     private String buildGraphText(String corpCode) {
