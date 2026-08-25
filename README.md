@@ -5,16 +5,23 @@ DART 전자공시(사업보고서/반기보고서/분기보고서 + 지분공시
 받아와 기업별로 분리된 벡터스토어(Neo4j)에 색인하고, 채팅 시 해당 기업의 공시 내용만
 근거로 답변합니다. 대화 히스토리를 참고해 후속 질문을 재작성하고, 로컬(Ollama)/
 Gemini/Claude(로그인된 Claude Code CLI) 중 답변 모델을 선택해 품질을 비교할 수
-있습니다.
+있습니다. 답변은 표/목록/굵게 등이 그대로 보이도록 마크다운으로 렌더링되고, 응답을
+기다리는 동안에는 타이핑 인디케이터가 표시됩니다.
 
 ## 사용 화면
 
-![답변 모델(로컬/Gemini/Claude) 토글과 검색 범위(topK) 조절](docs/screenshots/02-chat-controls.png)
+![답변 모델(로컬/Gemini/Claude) 토글, 검색 범위(topK) 조절, 마크다운으로 렌더링된 답변(표/목록/굵게)](docs/screenshots/02-chat-controls.png)
 
 기업을 선택하고 최신 공시를 색인한 뒤, 선택한 기업의 공시 내용에 대해 자유롭게
 질문하면 답변과 함께 근거가 된 공시(회사명/보고서명/접수번호/섹션)를 보여줍니다.
 채팅창 상단에서 답변 모델(로컬 qwen2.5:3b / Gemini / Claude)과 검색 범위(topK)를
-직접 조절할 수 있고, 이전 대화는 브라우저에 저장되어 후속 질문에 참고됩니다.
+직접 조절할 수 있고, 이전 대화는 브라우저에 저장되어 후속 질문에 참고됩니다. 답변에
+표나 목록이 포함되어 있으면 마크다운으로 그대로 렌더링됩니다.
+
+![응답을 기다리는 동안 표시되는 타이핑 인디케이터](docs/screenshots/04-response-loading.png)
+
+질문을 보내면 답변이 도착하기 전까지 채팅창에 타이핑 인디케이터(점 3개)가 표시되어
+현재 답변을 생성 중임을 알려줍니다.
 
 ![관리자 페이지 - DART 공시 자동 색인 및 저장된 데이터 확인](docs/screenshots/03-admin.png)
 
@@ -85,7 +92,8 @@ Gemini, Claude(로그인된 `claude -p` CLI를 서브프로세스로 호출 — 
   `claude -p` CLI를 서브프로세스로 호출 — API 키 없이 claude.ai 구독 계정 그대로 사용)
 - **벡터스토어**: Neo4j (기업마다 별도 라벨/인덱스로 분리), 지분공시 그래프도 같은 Neo4j에 저장
 - **외부 API**: DART(전자공시시스템) Open API, Google Gemini API(선택)
-- **Frontend**: Vue 3 + TypeScript + Vite, 대화 히스토리는 브라우저 IndexedDB에 저장
+- **Frontend**: Vue 3 + TypeScript + Vite, 대화 히스토리는 브라우저 IndexedDB에 저장.
+  답변은 `marked`로 마크다운 파싱 후 `DOMPurify`로 sanitize해 렌더링
 
 ## 실행 방법
 
