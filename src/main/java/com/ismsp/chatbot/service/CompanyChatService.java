@@ -8,15 +8,13 @@ import com.ismsp.chatbot.dto.SourceItem;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.ai.vectorstore.filter.Filter;
-import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.stereotype.Service;
 
 /**
  * DART 공시 원문(사업/반기/분기보고서 + 지분공시)을 근거로 기업 정보를 답변하는 채팅.
- * corp_code로 필터링해서 특정 기업의 공시 내용에만 근거하도록 하고, 벡터 검색으로는
- * 안 되는 지분 관계(제출인)는 DisclosureGraphService의 그래프에서 함께 가져와 보강한다.
+ * 기업마다 벡터 인덱스가 분리돼 있어(CompanyVectorStoreRegistry) 다른 기업 데이터가
+ * 애초에 검색 후보에 섞이지 않는다. 벡터 검색으로는 안 되는 지분 관계(제출인)는
+ * DisclosureGraphService의 그래프에서 함께 가져와 보강한다.
  */
 @Service
 public class CompanyChatService {
@@ -37,39 +35,26 @@ public class CompanyChatService {
             """;
 
     private final ChatClient chatClient;
-    private final VectorStore vectorStore;
+    private final CompanyVectorStoreRegistry vectorStoreRegistry;
     private final DisclosureGraphService disclosureGraphService;
 
     public CompanyChatService(
             ChatClient.Builder chatClientBuilder,
-            VectorStore vectorStore,
+            CompanyVectorStoreRegistry vectorStoreRegistry,
             DisclosureGraphService disclosureGraphService
     ) {
         this.chatClient = chatClientBuilder.build();
-        this.vectorStore = vectorStore;
+        this.vectorStoreRegistry = vectorStoreRegistry;
         this.disclosureGraphService = disclosureGraphService;
     }
 
     public ChatResponse chat(String question, String corpCode, int topK) {
-        boolean hasCorpFilter = corpCode != null && !corpCode.isBlank();
-        // Neo4jVectorStore는 corp_code 필터를 벡터 인덱스 조회(topK) 이후에 적용하는
-        // post-filter라서, topK를 그대로 후보 수로 쓰면 상위 topK가 전부 다른 기업
-        // 청크일 때 필터 후 0건이 될 수 있다. 필터가 있을 때는 후보군을 넉넉히 뽑은
-        // 뒤 최종 topK개만 잘라 쓴다.
-        int candidateTopK = hasCorpFilter ? Math.max(topK * 50, 300) : topK;
-
-        SearchRequest.Builder requestBuilder = SearchRequest.builder()
-                                                            .query(question)
-                                                            .topK(candidateTopK);
-        if (hasCorpFilter) {
-            Filter.Expression expression = new FilterExpressionBuilder().eq("corp_code", corpCode).build();
-            requestBuilder.filterExpression(expression);
+        if (corpCode == null || corpCode.isBlank()) {
+            throw new IllegalArgumentException("corpCode는 필수입니다");
         }
 
-        List<Document> context = vectorStore.similaritySearch(requestBuilder.build());
-        if (context.size() > topK) {
-            context = context.subList(0, topK);
-        }
+        SearchRequest searchRequest = SearchRequest.builder().query(question).topK(topK).build();
+        List<Document> context = vectorStoreRegistry.forCompany(corpCode).similaritySearch(searchRequest);
         String contextText = buildContextText(context);
         String graphText   = buildGraphText(corpCode);
 
@@ -92,9 +77,6 @@ public class CompanyChatService {
     }
 
     private String buildGraphText(String corpCode) {
-        if (corpCode == null || corpCode.isBlank()) {
-            return "(대상 기업 미지정)";
-        }
         List<FilerDisclosureDto> filers = disclosureGraphService.findFilers(corpCode, 10);
         if (filers.isEmpty()) {
             return "(지분공시 그래프 정보 없음)";

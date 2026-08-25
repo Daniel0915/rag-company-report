@@ -2,6 +2,11 @@ server:
   port: 8080
 
 spring:
+  autoconfigure:
+    exclude:
+      # 기업마다 별도 벡터 인덱스/라벨을 쓰기 위해 CompanyVectorStoreRegistry가
+      # 스토어를 직접 만든다 - 단일 VectorStore 빈을 만드는 자동 설정은 꺼둔다.
+      - org.springframework.ai.vectorstore.neo4j.autoconfigure.Neo4jVectorStoreAutoConfiguration
   servlet:
     multipart:
       max-file-size: 30MB
@@ -15,13 +20,6 @@ spring:
       embedding:
         options:
           model: bge-m3
-    vectorstore:
-      neo4j:
-        initialize-schema: true
-        index-name: company-report-index
-        embedding-dimension: 1024
-        distance-type: cosine
-        label: CompanyReportChunk
   neo4j:
     uri: ${NEO4J_URI:neo4j://localhost:7687}
     authentication:

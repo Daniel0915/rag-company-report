@@ -38,7 +38,7 @@ public class CompanyReportIndexService {
     }
 
     private final DartApiClient dartApiClient;
-    private final VectorStore vectorStore;
+    private final CompanyVectorStoreRegistry vectorStoreRegistry;
     private final DisclosureGraphService disclosureGraphService;
     private final TokenTextSplitter splitter = new TokenTextSplitter();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -47,12 +47,12 @@ public class CompanyReportIndexService {
 
     public CompanyReportIndexService(
             DartApiClient dartApiClient,
-            VectorStore vectorStore,
+            CompanyVectorStoreRegistry vectorStoreRegistry,
             DisclosureGraphService disclosureGraphService,
             @Value("${company-report.index-file:data/company-report-index.json}") String sidecarPath
     ) {
         this.dartApiClient = dartApiClient;
-        this.vectorStore = vectorStore;
+        this.vectorStoreRegistry = vectorStoreRegistry;
         this.disclosureGraphService = disclosureGraphService;
         this.sidecarFile = new File(sidecarPath);
         this.sidecarFile.getParentFile().mkdirs();
@@ -106,6 +106,7 @@ public class CompanyReportIndexService {
 
     private IndexResult indexDisclosure(WatchedCompany company, DisclosureItem item, String pblntfTy) {
         disclosureGraphService.recordDisclosure(company, item, pblntfTy);
+        VectorStore vectorStore = vectorStoreRegistry.forCompany(company.corpCode());
 
         Map<String, byte[]> files = dartApiClient.fetchDocument(item.rceptNo());
 

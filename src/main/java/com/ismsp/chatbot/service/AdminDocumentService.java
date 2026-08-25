@@ -19,7 +19,6 @@ import com.ismsp.chatbot.dto.AdminDocumentDto;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.pdf.PagePdfDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
-import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
@@ -50,7 +49,7 @@ public class AdminDocumentService {
     ) {
     }
 
-    private final VectorStore vectorStore;
+    private final CompanyVectorStoreRegistry vectorStoreRegistry;
     private final TokenTextSplitter splitter = new TokenTextSplitter();
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final File registryFile;
@@ -58,11 +57,11 @@ public class AdminDocumentService {
     private final Map<String, AdminDocumentRecord> registry;
 
     public AdminDocumentService(
-            VectorStore vectorStore,
+            CompanyVectorStoreRegistry vectorStoreRegistry,
             @Value("${admin-document.registry-file:data/admin-documents.json}") String registryPath,
             @Value("${admin-document.upload-dir:data/admin-uploads}") String uploadDirPath
     ) {
-        this.vectorStore = vectorStore;
+        this.vectorStoreRegistry = vectorStoreRegistry;
         this.registryFile = new File(registryPath);
         this.registryFile.getParentFile().mkdirs();
         this.uploadDir = new File(uploadDirPath);
@@ -141,7 +140,7 @@ public class AdminDocumentService {
                 })
                 .toList();
         List<Document> chunks = splitter.apply(tagged);
-        vectorStore.add(chunks);
+        vectorStoreRegistry.forCompany(company.corpCode()).add(chunks);
 
         List<String> chunkIds = chunks.stream().map(Document::getId).toList();
         AdminDocumentRecord record = new AdminDocumentRecord(
@@ -160,7 +159,7 @@ public class AdminDocumentService {
             throw new NoSuchElementException("문서를 찾을 수 없습니다: " + id);
         }
         if (!record.chunkIds().isEmpty()) {
-            vectorStore.delete(record.chunkIds());
+            vectorStoreRegistry.forCompany(record.corpCode()).delete(record.chunkIds());
         }
         new File(uploadDir, record.storedFileName()).delete();
         persistRegistry();
