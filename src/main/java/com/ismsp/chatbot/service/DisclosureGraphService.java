@@ -3,13 +3,17 @@ package com.ismsp.chatbot.service;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import com.ismsp.chatbot.dart.dto.DisclosureItem;
 import com.ismsp.chatbot.dart.dto.WatchedCompany;
 import com.ismsp.chatbot.dto.FilerDisclosureDto;
 import com.ismsp.chatbot.dto.RelatedCompanyDto;
+import org.neo4j.driver.AccessMode;
 import org.neo4j.driver.Driver;
+import org.neo4j.driver.Record;
 import org.neo4j.driver.Session;
+import org.neo4j.driver.SessionConfig;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -79,6 +83,27 @@ public class DisclosureGraphService {
                             record.get("rceptDt").asString(""),
                             record.get("rceptNo").asString("")
                     ));
+        }
+    }
+
+    /**
+     * LLM(Text2Cypher)이 생성한 쿼리를 읽기 전용 세션으로 실행한다. 세션 자체를
+     * READ 접근 모드로 열어서, 정규식 검사를 통과한 악의적/실수 쓰기 쿼리라도
+     * Neo4j 서버 단에서 다시 한번 거부되도록 이중으로 막는다.
+     * 결과가 없으면 null을 반환해 호출부가 고정 쿼리로 폴백할 수 있게 한다.
+     */
+    public String runReadOnlyQuery(String cypher) {
+        SessionConfig readOnly = SessionConfig.builder().withDefaultAccessMode(AccessMode.READ).build();
+        try (Session session = driver.session(readOnly)) {
+            List<Record> records = session.run(cypher).list();
+            if (records.isEmpty()) {
+                return null;
+            }
+            return records.stream()
+                    .map(record -> record.keys().stream()
+                            .map(key -> key + "=" + record.get(key).asObject())
+                            .collect(Collectors.joining(", ", "- ", "")))
+                    .collect(Collectors.joining("\n"));
         }
     }
 

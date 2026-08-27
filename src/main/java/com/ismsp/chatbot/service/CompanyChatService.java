@@ -1,6 +1,7 @@
 package com.ismsp.chatbot.service;
 
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import com.ismsp.chatbot.claude.ClaudeCliClient;
@@ -19,6 +20,11 @@ import org.springframework.stereotype.Service;
  * 기업마다 벡터 인덱스가 분리돼 있어(CompanyVectorStoreRegistry) 다른 기업 데이터가
  * 애초에 검색 후보에 섞이지 않는다. 벡터 검색으로는 안 되는 지분 관계(제출인)는
  * DisclosureGraphService의 그래프에서 함께 가져와 보강한다.
+ *
+ * 그래프 보강은 집계/랭킹/교집합처럼 고정 조회(findFilers) 하나로 못 푸는 질문일 때,
+ * 답변에 쓰기로 선택된 provider(local/gemini/claude)가 그 자리에서 Cypher를 생성해
+ * (Text2Cypher) 읽기 전용으로 실행하는 방식으로 확장된다. 생성 실패/쓰기 구문 포함/
+ * 실행 오류 시에는 항상 기존 findFilers 고정 조회로 안전하게 폴백한다.
  *
  * 대화 히스토리(프론트 IndexedDB 보관분)가 있으면, 후속 질문("만원이 맞아?" 같은
  * 키워드 없는 질문)을 그대로 임베딩하지 않고 먼저 독립형 질문으로 재작성한 뒤
@@ -39,6 +45,30 @@ public class CompanyChatService {
 
             최신 질문: %s
             """;
+
+    private static final String CYPHER_ROUTER_PROMPT_TEMPLATE = """
+            당신은 Neo4j 읽기 전용 Cypher 쿼리를 작성하는 어시스턴트입니다. 아래 그래프
+            스키마로 답할 수 있는, 지분공시 제출인 관계에 대한 집계·랭킹·비교·교집합·
+            역방향 조회 같은 그래프 탐색이 질문에 필요하면 그 질문에 맞는 Cypher 쿼리
+            하나만 출력하세요 (MATCH, WHERE, RETURN, ORDER BY, LIMIT, count()만 사용하고
+            CREATE/MERGE/SET/DELETE/REMOVE/DROP/LOAD CSV는 절대 쓰지 마세요). 회사 소개나
+            재무/사업내용처럼 그래프 탐색이 필요 없는 질문이면 다른 설명 없이 정확히
+            NONE 이라고만 출력하세요. 쿼리든 NONE이든 그 외 설명은 절대 덧붙이지 마세요.
+
+            스키마:
+            (:Company {corp_code, name, stock_code})
+            (:Report {rcept_no, report_nm, rcept_dt, pblntf_ty})
+            (:Filer {name})
+            (:Report)-[:FILED_BY]->(:Company)
+            (:Filer)-[:DISCLOSED]->(:Report)
+
+            현재 대상 기업의 corp_code: '%s'
+
+            질문: %s
+            """;
+
+    private static final Pattern WRITE_CLAUSE = Pattern.compile(
+            "(?i)\\b(CREATE|MERGE|DELETE|SET|REMOVE|DROP|LOAD\\s+CSV|CALL\\s+apoc)\\b");
 
     private static final String SYSTEM_PROMPT_TEMPLATE = """
             당신은 DART 전자공시 자료를 근거로 기업 정보를 설명하는 어시스턴트입니다.
@@ -89,7 +119,7 @@ public class CompanyChatService {
         SearchRequest searchRequest = SearchRequest.builder().query(searchQuery).topK(topK).build();
         List<Document> context = vectorStoreRegistry.forCompany(corpCode).similaritySearch(searchRequest);
         String contextText = buildContextText(context);
-        String graphText   = buildGraphText(corpCode);
+        String graphText   = buildGraphText(corpCode, searchQuery, llm);
 
         String answer = complete(llm, SYSTEM_PROMPT_TEMPLATE.formatted(contextText, graphText), question);
 
@@ -138,7 +168,40 @@ public class CompanyChatService {
         };
     }
 
-    private String buildGraphText(String corpCode) {
+    /**
+     * 질문이 집계/랭킹/교집합처럼 findFilers 하나로는 못 푸는 그래프 탐색을 요구하면,
+     * 답변에 쓰기로 선택된 provider(local/gemini/claude)에게 그 자리에서 Cypher를
+     * 생성시켜 읽기 전용으로 실행한다. 생성이 안 되거나(NONE), 쓰기 구문이 섞여
+     * 있거나, 실행이 실패하면 기존 findFilers 고정 조회로 폴백한다.
+     */
+    private String buildGraphText(String corpCode, String question, String llm) {
+        String cypher = generateGraphQuery(corpCode, question, llm);
+        if (cypher != null) {
+            try {
+                String result = disclosureGraphService.runReadOnlyQuery(cypher);
+                if (result != null) {
+                    return result;
+                }
+            } catch (Exception ignored) {
+                // 생성된 쿼리가 스키마와 안 맞거나 문법 오류인 경우 - 고정 조회로 폴백
+            }
+        }
+        return fixedFilerGraphText(corpCode);
+    }
+
+    private String generateGraphQuery(String corpCode, String question, String llm) {
+        String raw = complete(llm, "", CYPHER_ROUTER_PROMPT_TEMPLATE.formatted(corpCode, question));
+        if (raw == null) {
+            return null;
+        }
+        String cypher = raw.replaceAll("(?s)```(?:cypher)?", "").trim();
+        if (cypher.isBlank() || "NONE".equalsIgnoreCase(cypher) || WRITE_CLAUSE.matcher(cypher).find()) {
+            return null;
+        }
+        return cypher;
+    }
+
+    private String fixedFilerGraphText(String corpCode) {
         List<FilerDisclosureDto> filers = disclosureGraphService.findFilers(corpCode, 10);
         if (filers.isEmpty()) {
             return "(지분공시 그래프 정보 없음)";
