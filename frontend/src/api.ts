@@ -17,6 +17,7 @@ export interface SourceItem {
   reportNm: string;
   rceptNo: string;
   sectionTitle: string;
+  docType: string | null;
 }
 
 export interface ChatResponse {
@@ -94,6 +95,13 @@ export async function triggerIndex(bgnDe?: string, endDe?: string): Promise<Inde
   const res = await fetch(`${API}/index${query ? `?${query}` : ""}`, { method: "POST" });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "공시 가져오기 실패");
+  return data as IndexResult[];
+}
+
+export async function triggerNewsFetch(): Promise<IndexResult[]> {
+  const res = await fetch("/api/admin/news/fetch", { method: "POST" });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "뉴스 가져오기 실패");
   return data as IndexResult[];
 }
 

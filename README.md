@@ -1,12 +1,16 @@
 # 기업 리포트 챗봇 (Spring Boot + Spring AI + Neo4j)
 
-DART 전자공시(사업보고서/반기보고서/분기보고서 + 지분공시) 원문을 근거로 관심 기업에
-대해 질의응답하는 RAG 챗봇입니다. 워치리스트에 등록된 기업의 공시를 DART Open API에서
-받아와 기업별로 분리된 벡터스토어(Neo4j)에 색인하고, 채팅 시 해당 기업의 공시 내용만
-근거로 답변합니다. 대화 히스토리를 참고해 후속 질문을 재작성하고, 로컬(Ollama)/
-Gemini/Claude(로그인된 Claude Code CLI) 중 답변 모델을 선택해 품질을 비교할 수
-있습니다. 답변은 표/목록/굵게 등이 그대로 보이도록 마크다운으로 렌더링되고, 응답을
-기다리는 동안에는 타이핑 인디케이터가 표시됩니다.
+DART 전자공시(사업보고서/반기보고서/분기보고서 + 지분공시)와 관련 뉴스 기사를 근거로
+관심 기업에 대해 질의응답하는 RAG 챗봇입니다. 워치리스트에 등록된 기업의 공시를 DART
+Open API에서, 뉴스는 네이버 뉴스 검색결과 페이지에서(공식 API 키 불필요) 가져와
+기업별로 분리된 벡터스토어(Neo4j)에 함께 색인하고, 채팅 시 해당 기업의 공시+뉴스
+내용만 근거로 답변합니다. 지분공시 제출인 관계와 뉴스 기사-언론사 관계는 같은 Neo4j에
+그래프로도 구성해서, 벡터 유사도 검색(Vector Retriever)만으로는 못 푸는 집계/랭킹/
+멀티홉 질문은 LLM이 그 자리에서 생성한 Cypher(Text2Cypher)로 답합니다. 대화 히스토리를
+참고해 후속 질문을 재작성하고, 로컬(Ollama)/Gemini/Claude(로그인된 Claude Code CLI)
+중 답변 모델을 선택해 품질을 비교할 수 있습니다. 답변은 표/목록/굵게 등이 그대로
+보이도록 마크다운으로 렌더링되고, 응답을 기다리는 동안에는 타이핑 인디케이터가
+표시됩니다.
 
 ## 사용 화면
 
@@ -30,46 +34,38 @@ Gemini/Claude(로그인된 Claude Code CLI) 중 답변 모델을 선택해 품�
 수 있습니다. PDF 직접 업로드와 지분공시 제출인/관련기업 그래프 탐색도 같은 페이지
 안에서 할 수 있습니다.
 
+![뉴스가 근거로 잡힌 채팅 답변 - 출처에 "뉴스" 태그와 클릭 가능한 기사 링크 표시](docs/screenshots/05-chat-news-sources.png)
+
+뉴스 관련 질문("갤럭시 S26 FE 가격 관련 뉴스 3개만 알려줘")을 하면 공시뿐 아니라
+색인된 실제 뉴스 기사가 근거로 잡히고, 출처 목록에서 뉴스 항목은 "뉴스" 태그와 함께
+원문 기사 URL이 새 탭으로 열리는 링크로 표시됩니다.
+
+![관리자 페이지 - 색인 데이터 뷰어를 "뉴스" 유형으로 필터링한 화면, 기사 URL이 클릭 가능한 링크로 표시됨](docs/screenshots/06-admin-news-viewer.png)
+
+관리자 페이지의 "저장된 데이터 보기"에서 유형을 "뉴스"로 필터링하면 색인된 기사
+목록(언론사/제목/발행일/본문 미리보기)을 확인할 수 있고, 기사 URL도 링크로 클릭해
+원문으로 바로 이동할 수 있습니다.
+
 ## 아키텍처
 
 ```mermaid
 flowchart LR
-    FE["Vue 프론트엔드\n(채팅 / 관리자 페이지)"]
-    IDB[("IndexedDB\n대화 히스토리")]
+    FE["프론트엔드\n채팅 · 관리자 페이지"]
+    BE["Spring Boot 백엔드\n색인 · 검색 · 채팅"]
+    NEO4J[("Neo4j\n벡터 인덱스 + 그래프")]
+    LLM[("LLM\nOllama · Gemini · Claude")]
+    SRC[("DART 공시 · 네이버 뉴스")]
 
-    subgraph Backend["Spring Boot :8080"]
-        API["CompanyReportController"]
-        IDX["CompanyReportIndexService"]
-        CHAT["CompanyChatService"]
-        GRAPH["DisclosureGraphService"]
-        REG["CompanyVectorStoreRegistry"]
-        ADMIN["AdminDocumentService"]
-    end
-
-    DART[("DART 전자공시\nOpen API")]
-    OLLAMA[("Ollama\nqwen2.5:3b · bge-m3")]
-    GEMINI[("Gemini\n(선택)")]
-    CLAUDECLI[("claude -p\n(로그인된 CLI)")]
-    NEO4J[("Neo4j\n기업별 벡터 인덱스 + 지분공시 그래프")]
-
-    FE -- "대화 히스토리 저장/조회" --> IDB
-    FE -- "GET /watchlist\nPOST /index\nPOST /chat" --> API
-    FE -- "PDF 업로드 / 색인 조회" --> ADMIN
-    API --> IDX
-    API --> CHAT
-    IDX -- "공시 목록 조회 / 원문 다운로드" --> DART
-    IDX -- "청크 임베딩" --> OLLAMA
-    IDX -- "기업별 라벨로 저장" --> REG
-    IDX -- "공시 메타데이터(제출인 등) 기록" --> GRAPH
-    REG --> NEO4J
-    GRAPH --> NEO4J
-    CHAT -- "히스토리 있으면 질문 재작성" --> OLLAMA
-    CHAT -- "기업 전용 인덱스에서 유사도 검색" --> REG
-    CHAT -- "제출인/관련기업 그래프 조회" --> GRAPH
-    CHAT -- "답변 생성 (provider=local)" --> OLLAMA
-    CHAT -. "provider=gemini" .-> GEMINI
-    CHAT -. "provider=claude (subprocess)" .-> CLAUDECLI
+    FE <-- "질문 / 답변" --> BE
+    BE -- "① 공시·뉴스 수집" --> SRC
+    BE <-- "② 청크 저장 · 검색\n(Vector + Text2Cypher)" --> NEO4J
+    BE <-- "③ 임베딩 · 답변 생성" --> LLM
 ```
+
+색인 단계(①)는 DART 공시와 네이버 뉴스를 가져와 청크로 쪼갠 뒤 Neo4j에 저장하고,
+채팅 단계(②③)는 질문을 임베딩해 Neo4j에서 근거를 찾고(필요하면 Cypher도 생성해서
+그래프까지 탐색) LLM으로 답변을 만듭니다. 아래는 각 단계를 조금 더 풀어서 설명한
+흐름입니다 — 세부 클래스명이 궁금할 때만 참고하면 됩니다.
 
 색인 흐름: DART에서 공시 원문(XML)을 받아 목차 단위로 분해 → 기업/공시 메타데이터를
 태깅 → 토큰 단위로 청킹 → 기업별로 분리된 Neo4j 라벨/인덱스(`CompanyReportChunk_{corpCode}`)에
@@ -77,11 +73,73 @@ flowchart LR
 기업(Company) 그래프에도 기록됩니다. 같은 공시 파일은 해시로 비교해 변경이 없으면
 재색인하지 않습니다(DART API 일일 호출 제한 대응).
 
+뉴스 색인 흐름: 워치리스트 기업명으로 네이버 뉴스 검색결과 페이지를 직접 파싱해
+(`NaverSearchScraper`, 공식 API 키 불필요) 기사 URL을 모으고, 기사 페이지에서 본문을
+크롤링(`NaverArticleScraper`)해 청킹한 뒤 **같은 기업 전용 벡터 인덱스에 `doc_type=NEWS`로
+합류**시킵니다 — 별도 인덱스가 아니라 정기공시/지분공시 청크와 같은 라벨을 공유해서,
+채팅 시 공시와 뉴스가 함께 검색 후보가 됩니다. 기사-언론사-기업 관계는 지분공시 그래프와
+같은 `Company` 노드를 재사용해 Neo4j에 함께 기록되고, 기사 URL을 유일키로 한 사이드카
+파일(`data/news-index.json`)로 중복 수집을 막습니다.
+
 채팅 흐름: 브라우저에 저장된 최근 대화가 있으면 먼저 LLM으로 후속 질문을 독립형 질문으로
-재작성 → 해당 기업 전용 벡터 인덱스에서 유사도 검색(다른 기업 데이터가 섞이지 않음) →
-지분공시 그래프에서 제출인 정보 보강 → context 기반 답변 생성. 로컬(Ollama qwen2.5:3b),
-Gemini, Claude(로그인된 `claude -p` CLI를 서브프로세스로 호출 — API 키 불필요, claude.ai
-구독 계정 로그인 그대로 사용) 중 선택해서 같은 질문의 답변 품질을 비교할 수 있습니다.
+재작성 → 해당 기업 전용 벡터 인덱스에서 유사도 검색(**Vector Retriever**, 다른 기업
+데이터가 섞이지 않음, "뉴스"/"기사" 키워드가 있으면 `doc_type=NEWS`로 필터링) →
+집계·랭킹·멀티홉처럼 고정 조회로 못 푸는 그래프 질문이면 LLM이 그 자리에서 Cypher를
+생성해 읽기 전용으로 실행(**Text2Cypher**, 실패/미해당 시 최근 지분공시 제출인 고정
+조회로 폴백) → 두 근거를 합쳐 답변 생성. 로컬(Ollama qwen2.5:3b), Gemini, Claude(로그인된
+`claude -p` CLI를 서브프로세스로 호출 — API 키 불필요, claude.ai 구독 계정 로그인 그대로
+사용) 중 선택해서 같은 질문의 답변 품질을 비교할 수 있습니다.
+
+## 그래프 DB 스키마
+
+지분공시 제출인 관계와 뉴스 기사 관계를 하나의 Neo4j 그래프로 구성합니다(참고:
+[graphrag-tools-retriever](https://github.com/gongwon-nayeon/graphrag-tools-retriever)의 뉴스 그래프 스키마 구조를 참고해
+`Company` 노드를 공시 그래프와 뉴스 그래프가 공유하도록 확장했습니다).
+
+```mermaid
+graph LR
+    Filer(("Filer 제출인\nname")) -- "DISCLOSED\n공시했다" --> Report(("Report 공시\nrcept_no, report_nm,\nrcept_dt, pblntf_ty"))
+    Report -- "FILED_BY\n제출 대상 기업" --> Company(("Company 기업\ncorp_code, name,\nstock_code"))
+    Media(("Media 언론사\nname")) -- "PUBLISHED\n보도했다" --> Article(("Article 기사\nurl, title,\npublished_date"))
+    Article -- "ABOUT\n관련 기업" --> Company
+    Article -- "HAS_CHUNK\n본문 청크" --> Chunk[["CompanyReportChunk_{corpCode}\n벡터 청크 (doc_type=NEWS)"]]
+```
+
+- **Company (기업)**: 워치리스트 기업 (`corp_code`가 유일키) — 지분공시 그래프와 뉴스
+  그래프가 공유하는 중심 노드
+- **Report (공시)**: DART 공시 1건 (`rcept_no`가 유일키), `Company`에 `FILED_BY`(제출
+  대상 기업)로 연결
+- **Filer (제출인)**: 지분공시 제출인, `Report`에 `DISCLOSED`(공시했다)로 연결
+  (대량보유상황보고서/임원·주요주주소유보고서에서만 생성)
+- **Article (기사)**: 뉴스 기사 1건 (`url`이 유일키), `Company`에 `ABOUT`(관련 기업)으로
+  연결, 실제 본문이 담긴 벡터 청크 노드에 `HAS_CHUNK`(본문 청크)로 연결
+- **Media (언론사)**: 언론사, `Article`에 `PUBLISHED`(보도했다)로 연결
+
+이 스키마는 `CompanyChatService`의 Text2Cypher 라우터 프롬프트에 그대로 포함되어,
+LLM이 스키마를 보고 직접 Cypher를 생성합니다.
+
+## 검색 전략: Vector Retriever + Text2Cypher
+
+[graphrag-tools-retriever](https://github.com/gongwon-nayeon/graphrag-tools-retriever)의 `ToolsRetriever`(Vector /
+VectorCypher / Text2Cypher를 통합해 질문에 맞는 검색 방식을 고르는 구조)에서 아이디어를
+가져와, 이 프로젝트는 매 질문마다 두 가지 검색을 함께 수행하고 그 결과를 합쳐서
+답변합니다.
+
+1. **Vector Retriever** — 질문(또는 재작성된 후속 질문)을 임베딩해 기업 전용 Neo4j
+   벡터 인덱스에서 코사인 유사도 상위 topK개 청크를 가져옵니다. 공시와 뉴스 청크가 같은
+   인덱스에 섞여 있어서, "뉴스"/"기사"/"언론" 키워드가 있으면 `doc_type='NEWS'`
+   메타데이터 필터를 추가로 겁니다. (Neo4j 벡터스토어의 필터는 ANN 검색 이후 후보군에
+   대한 post-filter라, 필터가 걸릴 땐 후보군을 200개로 넉넉히 가져온 뒤 원하는 개수만큼
+   잘라 씁니다 — 안 그러면 상위 topK 후보에 뉴스 청크가 하나도 안 걸려 필터 후 0건이
+   되는 경우가 있습니다.)
+2. **Text2Cypher** — 위 벡터 검색과 별개로, 답변에 쓰기로 선택된 LLM(local/gemini/
+   claude)에게 그래프 스키마와 질문을 주고 Cypher 쿼리를 생성시킵니다. 집계·랭킹·비교·
+   교집합·역방향 조회처럼 벡터 유사도만으로 못 푸는 질문(예: "지분공시를 가장 많이 낸
+   제출인은?")에 쓰이고, 그래프 탐색이 필요 없으면 LLM이 `NONE`을 반환합니다. 생성된
+   쿼리는 읽기 전용 세션(`AccessMode.READ`)으로만 실행되고, 쓰기 구문(`CREATE`/`MERGE`/
+   `DELETE`/`SET`/`LOAD CSV` 등)이 섞여 있으면 정규식으로 걸러 실행하지 않습니다. 쿼리
+   생성/실행이 실패하거나 결과가 없으면 최근 지분공시 제출인 목록(`findFilers` 고정
+   조회)으로 안전하게 폴백합니다.
 
 ## 기술 스택
 
@@ -90,7 +148,9 @@ Gemini, Claude(로그인된 `claude -p` CLI를 서브프로세스로 호출 — 
   Google Gemini(REST API 직접 호출 — Spring AI Google GenAI 스타터는 1.1.0+ 필요해서
   현재 1.0.0 BOM과 맞지 않아 `RestClient`로 직접 연동) 또는 Claude(로그인된
   `claude -p` CLI를 서브프로세스로 호출 — API 키 없이 claude.ai 구독 계정 그대로 사용)
-- **벡터스토어**: Neo4j (기업마다 별도 라벨/인덱스로 분리), 지분공시 그래프도 같은 Neo4j에 저장
+- **벡터스토어**: Neo4j (기업마다 별도 라벨/인덱스로 분리), 지분공시·뉴스 그래프도 같은 Neo4j에 저장
+- **뉴스 수집**: Jsoup으로 네이버 뉴스 검색결과/기사 페이지를 직접 파싱 (Selenium·공식
+  API 키 불필요)
 - **외부 API**: DART(전자공시시스템) Open API, Google Gemini API(선택)
 - **Frontend**: Vue 3 + TypeScript + Vite, 대화 히스토리는 브라우저 IndexedDB에 저장.
   답변은 `marked`로 마크다운 파싱 후 `DOMPurify`로 sanitize해 렌더링
@@ -173,11 +233,15 @@ npm run dev   # http://localhost:5173, /api는 8080으로 프록시
 ### 3) 사용 순서
 
 1. 기업 선택 후 "최신 공시 가져오기"로 최근 2년치 공시(정기공시 + 지분공시) 색인
-2. 채팅창 상단에서 답변 모델(로컬/Gemini/Claude)과 검색 범위(topK) 선택
-3. 궁금한 내용 질문 (예: "사업의 개요 알려줘") — 이전 대화가 있으면 자동으로 참고됨
-4. 답변 하단의 "출처 공시"에서 근거가 된 보고서 확인
-5. 관리자 페이지(`/admin.html`)에서 PDF 직접 업로드, 색인된 청크 조회, 지분공시
-   제출인/관련기업 그래프 탐색 가능
+2. 관리자 페이지(`/admin.html`)에서 "최신 뉴스 가져오기"로 워치리스트 기업의 최신
+   뉴스도 함께 색인 (`POST /api/admin/news/fetch`)
+3. 채팅창 상단에서 답변 모델(로컬/Gemini/Claude)과 검색 범위(topK) 선택
+4. 궁금한 내용 질문 (예: "사업의 개요 알려줘", "최근 관련 뉴스 알려줘") — 이전 대화가
+   있으면 자동으로 참고됨
+5. 답변 하단의 "출처 (공시·뉴스)"에서 근거가 된 보고서/기사 확인 — 뉴스는 "뉴스" 태그와
+   함께 원문 링크가 표시됨
+6. 관리자 페이지에서 PDF 직접 업로드, 색인된 청크 조회(유형을 "뉴스"로 필터링하면
+   기사 목록만 확인 가능), 지분공시 제출인/관련기업 그래프 탐색 가능
 
 ## API 엔드포인트
 
@@ -185,18 +249,20 @@ npm run dev   # http://localhost:5173, /api는 8080으로 프록시
 |---|---|---|
 | GET | `/api/company-report/watchlist` | 워치리스트 기업 목록 조회 |
 | POST | `/api/company-report/index?bgn_de=&end_de=` | 워치리스트 기업의 공시 색인 (기간 미지정 시 최근 2년) |
-| POST | `/api/company-report/chat` | `{ question, corpCode, history?, topK?, provider? }` → 답변 + 근거 공시 목록 |
+| POST | `/api/company-report/chat` | `{ question, corpCode, history?, topK?, provider? }` → 답변 + 근거(공시/뉴스) 목록 |
+| POST | `/api/admin/news/fetch` | 워치리스트 전체 기업의 최신 뉴스를 검색·크롤링해 색인 |
 | GET | `/api/admin/documents` | 어드민 업로드 문서 목록 |
 | POST | `/api/admin/documents` | PDF 업로드 → 텍스트 추출 후 색인 |
 | DELETE | `/api/admin/documents/{id}` | 업로드 문서 삭제 |
-| GET | `/api/admin/indexed-chunks` | 색인된 청크 조회(디버깅/확인용) |
+| GET | `/api/admin/indexed-chunks?sourceType=` | 색인된 청크 조회(디버깅/확인용). `sourceType=NEWS`로 뉴스만 필터링 가능 |
 | GET | `/api/admin/graph/filers?corpCode=` | 특정 기업에 지분을 공시한 제출인 목록 |
 | GET | `/api/admin/graph/related-companies?filerName=` | 특정 제출인이 지분을 공시한 다른 기업 목록 |
 
 `POST /chat`의 `history`는 프론트엔드(IndexedDB)가 보관하는 최근 대화 몇 턴
 (`[{role, content}]`)이며, 있으면 백엔드가 후속 질문을 독립형 질문으로 재작성한
 뒤 검색합니다. `provider`는 `"local"`(기본값, Ollama), `"gemini"`, `"claude"`
-(로그인된 `claude -p` CLI) 중 하나.
+(로그인된 `claude -p` CLI) 중 하나. 응답의 `sources[].docType`이 `"NEWS"`면 해당
+출처의 `rceptNo`가 공시 접수번호가 아니라 뉴스 기사 URL입니다.
 
 ## 패키지 구조
 
@@ -205,16 +271,23 @@ src/main/java/com/ismsp/chatbot/
 ├── ChatbotApplication.java              # 엔트리포인트
 ├── controller/
 │   ├── CompanyReportController.java     # REST API (watchlist / index / chat)
+│   ├── NewsController.java              # 뉴스 수집 트리거 (POST /admin/news/fetch)
 │   ├── AdminDocumentController.java     # 어드민 PDF 업로드/조회/삭제
 │   ├── IndexedChunkController.java      # 색인된 청크 조회(디버깅용)
 │   └── DisclosureGraphController.java   # 지분공시 그래프 조회(제출인/관련기업)
 ├── service/
 │   ├── CompanyReportIndexService.java   # DART 공시 수집 → 청킹 → 기업별 인덱스 색인
+│   ├── NewsIngestService.java           # 뉴스 검색·크롤링 → 청킹 → 기업별 인덱스에 doc_type=NEWS로 합류
+│   ├── NewsGraphService.java            # 기사-언론사-기업 그래프 기록 (Company 노드는 공시 그래프와 공유)
 │   ├── CompanyVectorStoreRegistry.java  # 기업(corp_code)마다 별도 Neo4j 벡터 인덱스/라벨 관리
-│   ├── CompanyChatService.java          # 히스토리 기반 질문 재작성 + 유사도 검색 + RAG 답변 생성
-│   ├── DisclosureGraphService.java      # 지분공시 제출인-공시-기업 그래프 기록/조회
+│   ├── CompanyChatService.java          # 히스토리 기반 질문 재작성 + Vector Retriever + Text2Cypher 라우팅
+│   ├── DisclosureGraphService.java      # 지분공시 제출인-공시-기업 그래프 기록/조회 + Text2Cypher 실행
 │   ├── AdminDocumentService.java        # PDF 업로드 → 텍스트 추출 → 색인
 │   └── IndexedChunkService.java         # 색인된 청크를 있는 그대로 조회(읽기 전용)
+├── naver/
+│   ├── NaverSearchScraper.java          # 네이버 뉴스 검색결과 페이지 파싱 → 기사 URL 목록 (API 키 불필요)
+│   ├── NaverArticleScraper.java         # 기사 페이지 본문/제목/언론사/발행일 크롤링
+│   └── dto/                             # ScrapedArticle
 ├── gemini/
 │   └── GeminiApiClient.java             # Google Gemini generateContent REST 직접 호출
 ├── claude/
@@ -224,10 +297,10 @@ src/main/java/com/ismsp/chatbot/
 │   ├── DartXmlDocumentReader.java       # 공시 XML → 목차 단위 Document 변환
 │   ├── DartApiException.java
 │   └── dto/                             # CorpCode, DartListResponse, DisclosureItem, WatchedCompany
-└── dto/                                 # ChatRequest, ChatResponse, ChatTurnDto, SourceItem 등
+└── dto/                                 # ChatRequest, ChatResponse, ChatTurnDto, SourceItem(docType 포함) 등
 
 src/main/resources/
-├── application.yml                      # Ollama / Neo4j / DART / Gemini 설정 (Claude CLI는 설정 불필요)
+├── application.yml                      # Ollama / Neo4j / DART / Gemini / news 설정 (Claude CLI는 설정 불필요)
 └── static/                              # 빌드된 프론트엔드 산출물 (npm run build 결과, 자동 생성)
 
 frontend/
@@ -241,11 +314,12 @@ frontend/
     ├── chatHistory.ts                   # 대화 히스토리 IndexedDB 저장/조회
     └── components/
         ├── CompanySelector.vue          # 기업 선택 + 공시 갱신
-        ├── ChatPanel.vue                # 채팅 UI (로컬/Gemini/Claude 토글, topK, 출처, 히스토리)
+        ├── ChatPanel.vue                # 채팅 UI (로컬/Gemini/Claude 토글, topK, 출처(공시·뉴스 링크), 히스토리)
         ├── DartIndexPanel.vue           # 관리자: DART 공시 재색인 트리거
+        ├── NewsFetchPanel.vue           # 관리자: 뉴스 재수집 트리거
         ├── AdminDocumentUpload.vue      # 관리자: PDF 업로드
         ├── AdminDocumentList.vue        # 관리자: 업로드 문서 목록/삭제
-        ├── IndexedDataViewer.vue        # 관리자: 색인된 청크 브라우징
+        ├── IndexedDataViewer.vue        # 관리자: 색인된 청크 브라우징 (유형 필터에 "뉴스" 포함, 기사 링크 클릭 가능)
         └── RelationshipExplorer.vue     # 관리자: 지분공시 제출인/관련기업 그래프 탐색
 ```
 
@@ -263,3 +337,15 @@ frontend/
 - Claude 옵션은 매 질문마다 `claude -p` 프로세스를 새로 띄우기 때문에 로컬/Gemini
   보다 느립니다(수 초~수십 초). 또 별도 API 과금이 아니라 이 CLI가 로그인된
   claude.ai 계정의 사용량(플랜 한도)을 그대로 씁니다.
+- 뉴스는 네이버 공식 뉴스검색 API(클라우드 플랫폼 키 발급) 대신 검색결과/기사 페이지를
+  직접 파싱합니다 — API 키 없이 바로 쓸 수 있지만, 네이버가 페이지 구조를 바꾸면
+  셀렉터(`NaverSearchScraper`/`NaverArticleScraper`)를 다시 손봐야 할 수 있습니다.
+- 뉴스 수집은 기업당 최근 `news.articles-per-company`(기본 20)건까지만 가져오고,
+  이미 색인된 기사 URL은 `data/news-index.json`에 기록해 재수집 시 건너뜁니다.
+- `GET /api/admin/indexed-chunks`가 반환하는 `textPreview`는 본문 앞 200자만 잘라서
+  보여주는 미리보기입니다. 실제 청크 본문 전체는 Neo4j에 그대로 저장되어 있고,
+  채팅 답변 생성 시에는 전체 청크 텍스트가 근거로 쓰입니다.
+- 이 프로젝트의 뉴스 스크래핑 셀렉터와 그래프 스키마 설계는 참고 프로젝트
+  [graphrag-tools-retriever](https://github.com/gongwon-nayeon/graphrag-tools-retriever)
+  (네이버 뉴스 GraphRAG, Vector/VectorCypher/Text2Cypher 통합 `ToolsRetriever`)에서
+  아이디어를 가져왔습니다.

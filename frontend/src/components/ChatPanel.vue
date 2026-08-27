@@ -63,7 +63,7 @@
         type="text"
         class="input"
         v-model="question"
-        placeholder="선택한 기업의 공시(사업보고서/반기보고서 등)에 대해 질문하세요..."
+        placeholder="선택한 기업의 공시(사업보고서/반기보고서 등)와 최신 뉴스에 대해 질문하세요..."
         @keydown.enter="onEnter"
       />
       <button
@@ -77,12 +77,17 @@
       </button>
     </div>
 
-    <h6 class="text-muted section-label">출처 공시</h6>
+    <h6 class="text-muted section-label">출처 (공시·뉴스)</h6>
     <div class="source-list">
       <div v-for="(s, i) in sources" :key="i" class="source-item">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
         <span class="tag tag-outline">{{ s.corpName }}</span>
-        <span class="source-text">{{ s.reportNm }} ({{ s.rceptNo }}) · {{ s.sectionTitle }}</span>
+        <span v-if="s.docType === 'NEWS'" class="tag tag-neutral">뉴스</span>
+        <span v-if="s.docType === 'NEWS'" class="source-text"
+          >{{ s.reportNm }} (<a :href="s.rceptNo" target="_blank" rel="noopener noreferrer">{{ s.rceptNo }}</a
+          >) · {{ s.sectionTitle }}</span
+        >
+        <span v-else class="source-text">{{ s.reportNm }} ({{ s.rceptNo }}) · {{ s.sectionTitle }}</span>
       </div>
     </div>
   </div>

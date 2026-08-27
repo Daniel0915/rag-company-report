@@ -1,6 +1,6 @@
 <template>
   <div class="card elev-sm panel">
-    <div class="card-kicker">Step 03 · 지분 관계 탐색</div>
+    <div class="card-kicker">Step 04 · 지분 관계 탐색</div>
     <div class="card-title">누가 지분을 공시했나 (Graph RAG)</div>
     <p class="card-body">
       벡터 검색만으로는 안 되는 관계 탐색입니다. 기업을 고르면 그 기업에 지분을 공시한

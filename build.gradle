@@ -27,6 +27,7 @@ dependencies {
     implementation 'org.springframework.ai:spring-ai-vector-store'
     implementation 'org.springframework.ai:spring-ai-starter-vector-store-neo4j'
     implementation 'org.springframework.ai:spring-ai-pdf-document-reader'
+    implementation 'org.jsoup:jsoup:1.18.1'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }

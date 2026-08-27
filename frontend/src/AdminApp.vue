@@ -12,12 +12,13 @@
     <header class="hero">
       <h1>문서 관리</h1>
       <p class="text-muted">
-        DART 공시를 자동으로 가져오고, 실제로 저장된 데이터를 확인하고, PDF 문서를 추가로 업로드합니다.
+        DART 공시와 뉴스를 자동으로 가져오고, 실제로 저장된 데이터를 확인하고, PDF 문서를 추가로 업로드합니다.
       </p>
     </header>
 
     <div class="admin-stack">
       <DartIndexPanel />
+      <NewsFetchPanel />
       <IndexedDataViewer :companies="companies" />
       <RelationshipExplorer :companies="companies" />
     </div>
@@ -32,6 +33,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import DartIndexPanel from "./components/DartIndexPanel.vue";
+import NewsFetchPanel from "./components/NewsFetchPanel.vue";
 import IndexedDataViewer from "./components/IndexedDataViewer.vue";
 import RelationshipExplorer from "./components/RelationshipExplorer.vue";
 import AdminDocumentUpload from "./components/AdminDocumentUpload.vue";

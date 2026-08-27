@@ -10,6 +10,8 @@ import com.ismsp.chatbot.dto.ChatTurnDto;
 import com.ismsp.chatbot.dto.FilerDisclosureDto;
 import com.ismsp.chatbot.dto.SourceItem;
 import com.ismsp.chatbot.gemini.GeminiApiClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
@@ -32,6 +34,8 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class CompanyChatService {
+
+    private static final Logger log = LoggerFactory.getLogger(CompanyChatService.class);
 
     private static final String REWRITE_PROMPT_TEMPLATE = """
             아래는 사용자와 어시스턴트의 이전 대화입니다.
@@ -59,8 +63,12 @@ public class CompanyChatService {
             (:Company {corp_code, name, stock_code})
             (:Report {rcept_no, report_nm, rcept_dt, pblntf_ty})
             (:Filer {name})
+            (:Article {url, title, published_date})
+            (:Media {name})
             (:Report)-[:FILED_BY]->(:Company)
             (:Filer)-[:DISCLOSED]->(:Report)
+            (:Article)-[:ABOUT]->(:Company)
+            (:Media)-[:PUBLISHED]->(:Article)
 
             현재 대상 기업의 corp_code: '%s'
 
@@ -69,6 +77,15 @@ public class CompanyChatService {
 
     private static final Pattern WRITE_CLAUSE = Pattern.compile(
             "(?i)\\b(CREATE|MERGE|DELETE|SET|REMOVE|DROP|LOAD\\s+CSV|CALL\\s+apoc)\\b");
+
+    /**
+     * 벡터 검색은 doc_type 구분 없이 코사인 유사도로만 후보를 뽑기 때문에, "뉴스 알려줘"처럼
+     * 뉴스 자체를 가리킬 뿐 구체적인 내용이 없는 질문은 임베딩이 모호해서 공시 청크가 더
+     * 가깝게 나오는 경우가 있다. 질문에 이 키워드가 있으면 doc_type='NEWS'로 검색을
+     * 좁혀서, 막연한 "뉴스 보여줘" 질문도 실제 뉴스 청크를 근거로 쓰게 한다.
+     */
+    private static final Pattern NEWS_KEYWORD = Pattern.compile("뉴스|기사|언론");
+    private static final int NEWS_FILTER_CANDIDATE_POOL = 200;
 
     private static final String SYSTEM_PROMPT_TEMPLATE = """
             당신은 DART 전자공시 자료를 근거로 기업 정보를 설명하는 어시스턴트입니다.
@@ -116,8 +133,20 @@ public class CompanyChatService {
                 ? question
                 : rewriteQuery(question, history, llm);
 
-        SearchRequest searchRequest = SearchRequest.builder().query(searchQuery).topK(topK).build();
+        boolean newsOnly = NEWS_KEYWORD.matcher(question).find();
+        // Neo4jVectorStore는 filterExpression을 ANN 검색 이후 후보군(topK개)에 대한
+        // WHERE절로 적용한다 - topK를 그대로 쓰면 상위 후보에 NEWS 청크가 하나도 안 걸려
+        // 필터링 후 0건이 되기 쉽다. 필터가 걸릴 땐 후보군을 넉넉히 가져온 뒤 잘라낸다.
+        int annTopK = newsOnly ? Math.max(topK, NEWS_FILTER_CANDIDATE_POOL) : topK;
+        SearchRequest.Builder searchRequestBuilder = SearchRequest.builder().query(searchQuery).topK(annTopK);
+        if (newsOnly) {
+            searchRequestBuilder.filterExpression("doc_type == 'NEWS'");
+        }
+        SearchRequest searchRequest = searchRequestBuilder.build();
         List<Document> context = vectorStoreRegistry.forCompany(corpCode).similaritySearch(searchRequest);
+        if (newsOnly && context.size() > topK) {
+            context = context.subList(0, topK);
+        }
         String contextText = buildContextText(context);
         String graphText   = buildGraphText(corpCode, searchQuery, llm);
 
@@ -128,7 +157,8 @@ public class CompanyChatService {
                         String.valueOf(d.getMetadata().get("corp_name")),
                         String.valueOf(d.getMetadata().get("report_nm")),
                         String.valueOf(d.getMetadata().get("rcept_no")),
-                        String.valueOf(d.getMetadata().get("section_title"))
+                        String.valueOf(d.getMetadata().get("section_title")),
+                        (String) d.getMetadata().get("doc_type")
                 ))
                 .toList();
 
@@ -177,14 +207,19 @@ public class CompanyChatService {
     private String buildGraphText(String corpCode, String question, String llm) {
         String cypher = generateGraphQuery(corpCode, question, llm);
         if (cypher != null) {
+            log.info("[Text2Cypher] generated query: {}", cypher);
             try {
                 String result = disclosureGraphService.runReadOnlyQuery(cypher);
                 if (result != null) {
+                    log.info("[Text2Cypher] execution succeeded, {} char(s) of result used", result.length());
                     return result;
                 }
-            } catch (Exception ignored) {
-                // 생성된 쿼리가 스키마와 안 맞거나 문법 오류인 경우 - 고정 조회로 폴백
+                log.info("[Text2Cypher] query returned no rows, falling back to fixed findFilers");
+            } catch (Exception e) {
+                log.info("[Text2Cypher] execution failed ({}), falling back to fixed findFilers", e.getMessage());
             }
+        } else {
+            log.info("[Text2Cypher] router returned NONE, using fixed findFilers");
         }
         return fixedFilerGraphText(corpCode);
     }

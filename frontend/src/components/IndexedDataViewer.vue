@@ -1,6 +1,6 @@
 <template>
   <div class="card elev-sm panel">
-    <div class="card-kicker">Step 02 · 저장된 데이터 확인</div>
+    <div class="card-kicker">Step 03 · 저장된 데이터 확인</div>
     <div class="card-title">저장된 데이터 보기</div>
     <p class="card-body">실제로 저장된 공시 내용을 기업/유형별로 확인합니다.</p>
 
@@ -21,6 +21,7 @@
           <option value="A">정기공시</option>
           <option value="D">지분공시</option>
           <option value="ADMIN_PDF">관리자 PDF</option>
+          <option value="NEWS">뉴스</option>
         </select>
       </div>
     </div>
@@ -35,7 +36,11 @@
           <div class="admin-doc-meta">
             <span class="tag tag-outline">{{ c.corpName }}</span>
             <span class="tag tag-neutral">{{ typeLabel(c) }}</span>
-            <span class="text-muted">{{ c.reportNm }} ({{ c.rceptNo }})</span>
+            <span v-if="c.docType === 'NEWS'" class="text-muted"
+              >{{ c.reportNm }} (<a :href="c.rceptNo" target="_blank" rel="noopener noreferrer">{{ c.rceptNo }}</a
+              >)</span
+            >
+            <span v-else class="text-muted">{{ c.reportNm }} ({{ c.rceptNo }})</span>
             <span v-if="c.rceptDt" class="text-muted">{{ c.rceptDt }}</span>
           </div>
           <p class="admin-doc-desc">{{ c.textPreview }}…</p>
@@ -75,6 +80,7 @@ const error = ref("");
 
 function typeLabel(c: IndexedChunk): string {
   if (c.docType === "ADMIN_PDF") return "관리자 PDF";
+  if (c.docType === "NEWS") return "뉴스";
   if (c.pblntfTy === "D") return "지분공시";
   return "정기공시";
 }

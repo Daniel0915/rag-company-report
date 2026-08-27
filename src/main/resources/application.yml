@@ -43,3 +43,7 @@ company-report:
 admin-document:
   registry-file: data/admin-documents.json
   upload-dir: data/admin-uploads
+
+news:
+  index-file: data/news-index.json
+  articles-per-company: 20

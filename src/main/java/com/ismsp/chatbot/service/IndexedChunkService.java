@@ -67,6 +67,7 @@ public class IndexedChunkService {
             case "A" -> "(n.`metadata.pblntf_ty` = 'A' OR (n.`metadata.pblntf_ty` IS NULL AND n.`metadata.doc_type` IS NULL))";
             case "D" -> "n.`metadata.pblntf_ty` = 'D'";
             case "ADMIN_PDF" -> "n.`metadata.doc_type` = 'ADMIN_PDF'";
+            case "NEWS" -> "n.`metadata.doc_type` = 'NEWS'";
             default -> "true";
         };
     }
