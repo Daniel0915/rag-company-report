@@ -10,6 +10,7 @@ import com.ismsp.chatbot.dto.ChatTurnDto;
 import com.ismsp.chatbot.dto.IndexResult;
 import com.ismsp.chatbot.service.CompanyChatService;
 import com.ismsp.chatbot.service.CompanyReportIndexService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -17,15 +18,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequiredArgsConstructor
 public class CompanyReportController {
 
     private final CompanyReportIndexService indexService;
     private final CompanyChatService chatService;
-
-    public CompanyReportController(CompanyReportIndexService indexService, CompanyChatService chatService) {
-        this.indexService = indexService;
-        this.chatService = chatService;
-    }
 
     @GetMapping("/api/company-report/watchlist")
     public List<WatchedCompany> watchlist() {
@@ -46,7 +43,7 @@ public class CompanyReportController {
     @PostMapping("/api/company-report/chat")
     public ChatResponse chat(@RequestBody ChatRequest request) {
         List<ChatTurnDto> history = request.history() != null ? request.history() : List.of();
-        int topK = request.topK() != null ? Math.min(Math.max(request.topK(), 1), 20) : 4;
+        int topK = request.topK() <= 0 ? 4 : Math.min(Math.max(request.topK(), 1), 20);
         return chatService.chat(request.question(), request.corpCode(), topK, history, request.provider());
     }
 }

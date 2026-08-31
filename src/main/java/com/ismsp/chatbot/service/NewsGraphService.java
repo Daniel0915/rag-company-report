@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.ismsp.chatbot.dart.dto.WatchedCompany;
+import lombok.RequiredArgsConstructor;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.Session;
 import org.springframework.stereotype.Service;
@@ -22,13 +23,10 @@ import org.springframework.util.StringUtils;
  * 연결하는 그래프 관계만 추가로 만든다.
  */
 @Service
+@RequiredArgsConstructor
 public class NewsGraphService {
 
     private final Driver driver;
-
-    public NewsGraphService(Driver driver) {
-        this.driver = driver;
-    }
 
     /** 기사 1건을 그래프에 반영한다. url이 유일키. */
     public void recordArticle(

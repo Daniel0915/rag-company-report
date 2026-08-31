@@ -7,5 +7,5 @@ import java.util.List;
  * topK는 검색해서 근거로 쓸 공시 조각 수. 없으면 기본값(4) 사용.
  * provider는 "local"(Ollama, 기본값) 또는 "cloud"(Gemini).
  */
-public record ChatRequest(String question, String corpCode, List<ChatTurnDto> history, Integer topK, String provider) {
+public record ChatRequest(String question, String corpCode, List<ChatTurnDto> history, int topK, String provider) {
 }

@@ -119,7 +119,7 @@ interface ChatMessage {
 const HISTORY_LIMIT = 6;
 
 const topK = ref(6);
-const provider = ref<ChatProvider>("local");
+const provider = ref<ChatProvider>("claude");
 const question = ref("");
 const sending = ref(false);
 const messages = ref<ChatMessage[]>([]);

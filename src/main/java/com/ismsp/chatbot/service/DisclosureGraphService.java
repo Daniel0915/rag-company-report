@@ -8,7 +8,9 @@ import java.util.stream.Collectors;
 import com.ismsp.chatbot.dart.dto.DisclosureItem;
 import com.ismsp.chatbot.dart.dto.WatchedCompany;
 import com.ismsp.chatbot.dto.FilerDisclosureDto;
+import com.ismsp.chatbot.dto.GraphExpansionRow;
 import com.ismsp.chatbot.dto.RelatedCompanyDto;
+import lombok.RequiredArgsConstructor;
 import org.neo4j.driver.AccessMode;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.Record;
@@ -27,13 +29,10 @@ import org.springframework.util.StringUtils;
  * 기존 벡터 검색 파이프라인에는 영향을 주지 않는다.
  */
 @Service
+@RequiredArgsConstructor
 public class DisclosureGraphService {
 
     private final Driver driver;
-
-    public DisclosureGraphService(Driver driver) {
-        this.driver = driver;
-    }
 
     /** 공시 1건을 그래프에 반영한다. 모든 공시는 Report-Company로 연결하고, 지분공시(D)는 제출인(Filer)까지 연결한다. */
     public void recordDisclosure(WatchedCompany company, DisclosureItem item, String pblntfTy) {
@@ -104,6 +103,57 @@ public class DisclosureGraphService {
                             .map(key -> key + "=" + record.get(key).asObject())
                             .collect(Collectors.joining(", ", "- ", "")))
                     .collect(Collectors.joining("\n"));
+        }
+    }
+
+    /**
+     * VectorCypher: 벡터 검색이 이미 뽑은 topK 청크의 메타데이터(rcept_no, article_url)에
+     * 고정 앵커된 단일 Cypher로, 청크 자체엔 없는 그래프 전용 정보를 보강한다. 쿼리
+     * 문자열이 고정/파라미터화돼 있고 LLM이 만든 게 아니므로 runReadOnlyQuery처럼
+     * WRITE_CLAUSE 검사나 READ 전용 세션이 필요 없다 - findFilers와 같은 신뢰 수준의
+     * 고정 조회다.
+     */
+    public List<GraphExpansionRow> expandRetrievedContext(
+            String corpCode, List<String> rceptNos, List<String> articleUrls, int limit
+    ) {
+        if (rceptNos.isEmpty() && articleUrls.isEmpty()) {
+            return List.of();
+        }
+        String query = """
+                CALL {
+                    UNWIND $rceptNos AS rceptNo
+                    MATCH (f:Filer)-[:DISCLOSED]->(r:Report {rcept_no: rceptNo})-[:FILED_BY]->(:Company {corp_code: $corpCode})
+                    OPTIONAL MATCH (f)-[:DISCLOSED]->(:Report)-[:FILED_BY]->(other:Company)
+                    WHERE other.corp_code <> $corpCode
+                    RETURN 'DISCLOSURE' AS kind, rceptNo AS anchor, f.name AS primaryName,
+                           r.report_nm AS secondaryName, other.corp_code AS relatedCorpCode, other.name AS relatedCorpName
+
+                    UNION ALL
+
+                    UNWIND $articleUrls AS articleUrl
+                    MATCH (a:Article {url: articleUrl})-[:ABOUT]->(other:Company)
+                    WHERE other.corp_code <> $corpCode
+                    OPTIONAL MATCH (m:Media)-[:PUBLISHED]->(a)
+                    RETURN 'NEWS' AS kind, articleUrl AS anchor, coalesce(m.name, '(언론사 미상)') AS primaryName,
+                           a.title AS secondaryName, other.corp_code AS relatedCorpCode, other.name AS relatedCorpName
+                }
+                RETURN DISTINCT kind, anchor, primaryName, secondaryName, relatedCorpCode, relatedCorpName
+                LIMIT $limit
+                """;
+        try (Session session = driver.session()) {
+            return session.run(query, Map.of(
+                    "corpCode", corpCode,
+                    "rceptNos", rceptNos,
+                    "articleUrls", articleUrls,
+                    "limit", limit
+            )).list(record -> new GraphExpansionRow(
+                    record.get("kind").asString(""),
+                    record.get("anchor").asString(""),
+                    record.get("primaryName").asString(""),
+                    record.get("secondaryName").asString(""),
+                    record.get("relatedCorpCode").asString(null),
+                    record.get("relatedCorpName").asString(null)
+            ));
         }
     }
 

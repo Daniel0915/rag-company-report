@@ -8,6 +8,7 @@ import java.util.Map;
 import com.ismsp.chatbot.dart.dto.WatchedCompany;
 import com.ismsp.chatbot.dto.IndexedChunkDto;
 import com.ismsp.chatbot.dto.IndexedChunkPage;
+import lombok.RequiredArgsConstructor;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.Record;
 import org.neo4j.driver.Session;
@@ -21,13 +22,10 @@ import org.springframework.stereotype.Service;
  * 그 라벨만 조회하고 "전체"면 워치리스트의 모든 라벨을 조회해 애플리케이션에서 합친다.
  */
 @Service
+@RequiredArgsConstructor
 public class IndexedChunkService {
 
     private final Driver driver;
-
-    public IndexedChunkService(Driver driver) {
-        this.driver = driver;
-    }
 
     public IndexedChunkPage listChunks(String corpCode, String sourceType, int limit, int offset) {
         List<String> corpCodes = (corpCode == null || corpCode.isBlank())

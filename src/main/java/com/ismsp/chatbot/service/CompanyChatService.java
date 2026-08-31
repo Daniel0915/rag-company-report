@@ -7,11 +7,10 @@ import java.util.stream.Collectors;
 import com.ismsp.chatbot.claude.ClaudeCliClient;
 import com.ismsp.chatbot.dto.ChatResponse;
 import com.ismsp.chatbot.dto.ChatTurnDto;
-import com.ismsp.chatbot.dto.FilerDisclosureDto;
+import com.ismsp.chatbot.dto.GraphExpansionRow;
 import com.ismsp.chatbot.dto.SourceItem;
 import com.ismsp.chatbot.gemini.GeminiApiClient;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
@@ -23,19 +22,19 @@ import org.springframework.stereotype.Service;
  * 애초에 검색 후보에 섞이지 않는다. 벡터 검색으로는 안 되는 지분 관계(제출인)는
  * DisclosureGraphService의 그래프에서 함께 가져와 보강한다.
  *
- * 그래프 보강은 집계/랭킹/교집합처럼 고정 조회(findFilers) 하나로 못 푸는 질문일 때,
- * 답변에 쓰기로 선택된 provider(local/gemini/claude)가 그 자리에서 Cypher를 생성해
+ * 그래프 보강은 집계/랭킹/교집합처럼 고정 조회 하나로 못 푸는 질문일 때, 답변에
+ * 쓰기로 선택된 provider(local/gemini/claude)가 그 자리에서 Cypher를 생성해
  * (Text2Cypher) 읽기 전용으로 실행하는 방식으로 확장된다. 생성 실패/쓰기 구문 포함/
- * 실행 오류 시에는 항상 기존 findFilers 고정 조회로 안전하게 폴백한다.
+ * 실행 오류 시에는 벡터 검색으로 이미 뽑힌 청크(rcept_no/article_url)에 앵커된
+ * 고정 Cypher(VectorCypher)로 안전하게 폴백한다.
  *
  * 대화 히스토리(프론트 IndexedDB 보관분)가 있으면, 후속 질문("만원이 맞아?" 같은
  * 키워드 없는 질문)을 그대로 임베딩하지 않고 먼저 독립형 질문으로 재작성한 뒤
  * 그 결과로 벡터 검색을 한다 - 안 그러면 후속 질문마다 검색이 엉뚱하게 튄다.
  */
 @Service
+@Slf4j
 public class CompanyChatService {
-
-    private static final Logger log = LoggerFactory.getLogger(CompanyChatService.class);
 
     private static final String REWRITE_PROMPT_TEMPLATE = """
             아래는 사용자와 어시스턴트의 이전 대화입니다.
@@ -86,6 +85,7 @@ public class CompanyChatService {
      */
     private static final Pattern NEWS_KEYWORD = Pattern.compile("뉴스|기사|언론");
     private static final int NEWS_FILTER_CANDIDATE_POOL = 200;
+    private static final int VECTOR_CYPHER_LIMIT = 30;
 
     private static final String SYSTEM_PROMPT_TEMPLATE = """
             당신은 DART 전자공시 자료를 근거로 기업 정보를 설명하는 어시스턴트입니다.
@@ -93,12 +93,13 @@ public class CompanyChatService {
             원문에서 발췌한 내용이고, 그래프 정보는 지분공시(주식등의대량보유상황보고서,
             임원ㆍ주요주주소유보고서)에서 추출한 제출인 관계입니다. 이 정보들만 근거로
             답변하고, 없는 내용이면 모른다고 답하세요. 답변에는 근거가 된 공시명과 섹션을
-            함께 언급하세요. 한국어로 답변하세요.
+            함께 언급하세요. 한국어로 답변하세요. 뉴스 목록을 요청받으면 제목, 출처, 날짜,
+            링크만 간결하게 나열하고, 관련성 여부에 대한 부연 설명이나 주석은 달지 마세요.
 
             context:
             %s
 
-            그래프 정보 (이 기업에 지분을 공시한 사람/기관):
+            그래프 정보 (지분공시 제출인 관계 및 뉴스 기사의 다른 기업 언급):
             %s
             """;
 
@@ -129,26 +130,26 @@ public class CompanyChatService {
         }
         String llm = normalizeProvider(provider);
 
-        String searchQuery = (history == null || history.isEmpty())
-                ? question
-                : rewriteQuery(question, history, llm);
+        String searchQuery = (history == null || history.isEmpty()) ? question : rewriteQuery(question, history, llm);
 
         boolean newsOnly = NEWS_KEYWORD.matcher(question).find();
         // Neo4jVectorStore는 filterExpression을 ANN 검색 이후 후보군(topK개)에 대한
         // WHERE절로 적용한다 - topK를 그대로 쓰면 상위 후보에 NEWS 청크가 하나도 안 걸려
         // 필터링 후 0건이 되기 쉽다. 필터가 걸릴 땐 후보군을 넉넉히 가져온 뒤 잘라낸다.
         int annTopK = newsOnly ? Math.max(topK, NEWS_FILTER_CANDIDATE_POOL) : topK;
-        SearchRequest.Builder searchRequestBuilder = SearchRequest.builder().query(searchQuery).topK(annTopK);
-        if (newsOnly) {
-            searchRequestBuilder.filterExpression("doc_type == 'NEWS'");
-        }
-        SearchRequest searchRequest = searchRequestBuilder.build();
-        List<Document> context = vectorStoreRegistry.forCompany(corpCode).similaritySearch(searchRequest);
+        SearchRequest searchRequest = SearchRequest.builder()
+                                                   .query(searchQuery)
+                                                   .topK(annTopK)
+                                                   .filterExpression(newsOnly ? "doc_type == 'NEWS'" : null)
+                                                   .build();
+
+        List<Document> context = vectorStoreRegistry.forCompany(corpCode)
+                                                    .similaritySearch(searchRequest);
         if (newsOnly && context.size() > topK) {
             context = context.subList(0, topK);
         }
         String contextText = buildContextText(context);
-        String graphText   = buildGraphText(corpCode, searchQuery, llm);
+        String graphText   = buildGraphText(corpCode, searchQuery, llm, context);
 
         String answer = complete(llm, SYSTEM_PROMPT_TEMPLATE.formatted(contextText, graphText), question);
 
@@ -199,12 +200,13 @@ public class CompanyChatService {
     }
 
     /**
-     * 질문이 집계/랭킹/교집합처럼 findFilers 하나로는 못 푸는 그래프 탐색을 요구하면,
+     * 질문이 집계/랭킹/교집합처럼 고정 조회 하나로는 못 푸는 그래프 탐색을 요구하면,
      * 답변에 쓰기로 선택된 provider(local/gemini/claude)에게 그 자리에서 Cypher를
-     * 생성시켜 읽기 전용으로 실행한다. 생성이 안 되거나(NONE), 쓰기 구문이 섞여
-     * 있거나, 실행이 실패하면 기존 findFilers 고정 조회로 폴백한다.
+     * 생성시켜 읽기 전용으로 실행한다(Text2Cypher). 생성이 안 되거나(NONE), 쓰기 구문이
+     * 섞여 있거나, 실행이 실패/빈 결과면 VectorCypher 확장(벡터 검색으로 이미 뽑힌
+     * context 청크의 rcept_no/article_url에 앵커된 고정 Cypher)으로 폴백한다.
      */
-    private String buildGraphText(String corpCode, String question, String llm) {
+    private String buildGraphText(String corpCode, String question, String llm, List<Document> context) {
         String cypher = generateGraphQuery(corpCode, question, llm);
         if (cypher != null) {
             log.info("[Text2Cypher] generated query: {}", cypher);
@@ -214,14 +216,14 @@ public class CompanyChatService {
                     log.info("[Text2Cypher] execution succeeded, {} char(s) of result used", result.length());
                     return result;
                 }
-                log.info("[Text2Cypher] query returned no rows, falling back to fixed findFilers");
+                log.info("[Text2Cypher] query returned no rows, falling back to VectorCypher expansion");
             } catch (Exception e) {
-                log.info("[Text2Cypher] execution failed ({}), falling back to fixed findFilers", e.getMessage());
+                log.info("[Text2Cypher] execution failed ({}), falling back to VectorCypher expansion", e.getMessage());
             }
         } else {
-            log.info("[Text2Cypher] router returned NONE, using fixed findFilers");
+            log.info("[Text2Cypher] router returned NONE, using VectorCypher expansion");
         }
-        return fixedFilerGraphText(corpCode);
+        return vectorCypherGraphText(corpCode, context);
     }
 
     private String generateGraphQuery(String corpCode, String question, String llm) {
@@ -236,16 +238,52 @@ public class CompanyChatService {
         return cypher;
     }
 
-    private String fixedFilerGraphText(String corpCode) {
-        List<FilerDisclosureDto> filers = disclosureGraphService.findFilers(corpCode, 10);
-        if (filers.isEmpty()) {
-            return "(지분공시 그래프 정보 없음)";
+    /**
+     * VectorCypher: 벡터 검색으로 이미 뽑힌 topK 청크 중 지분공시(D타입)/뉴스 청크의
+     * rcept_no/article_url만 모아 disclosureGraphService.expandRetrievedContext에
+     * 넘긴다. 이번 검색 결과와 무관한 "기업 전체 최근 제출인" 대신, 실제로 근거로
+     * 쓰인 공시/기사와 연결된 그래프 정보만 보강한다.
+     */
+    private String vectorCypherGraphText(String corpCode, List<Document> context) {
+        List<String> rceptNos = context.stream()
+                .filter(d -> "D".equals(d.getMetadata().get("pblntf_ty")))
+                .map(d -> String.valueOf(d.getMetadata().get("rcept_no")))
+                .distinct()
+                .toList();
+        List<String> articleUrls = context.stream()
+                .filter(d -> "NEWS".equals(d.getMetadata().get("doc_type")))
+                .map(d -> String.valueOf(d.getMetadata().get("article_url")))
+                .distinct()
+                .toList();
+        if (rceptNos.isEmpty() && articleUrls.isEmpty()) {
+            log.info("[VectorCypher] no D-type/NEWS chunks in retrieved context, skipping graph expansion");
+            return "(검색된 근거 청크에서 확장할 그래프 정보 없음)";
         }
+        List<GraphExpansionRow> rows =
+                disclosureGraphService.expandRetrievedContext(corpCode, rceptNos, articleUrls, VECTOR_CYPHER_LIMIT);
+        log.info("[VectorCypher] expanded {} row(s) from {} rcept_no(s) / {} article_url(s)",
+                rows.size(), rceptNos.size(), articleUrls.size());
+        if (rows.isEmpty()) {
+            return "(검색된 근거 청크에 연결된 추가 그래프 정보 없음)";
+        }
+        return formatGraphExpansionRows(rows);
+    }
+
+    private String formatGraphExpansionRows(List<GraphExpansionRow> rows) {
         StringBuilder sb = new StringBuilder();
-        for (FilerDisclosureDto f : filers) {
-            sb.append("- 제출인: ").append(f.filerName())
-                    .append(" | 공시명: ").append(f.reportNm())
-                    .append(" | 접수일: ").append(f.rceptDt()).append("\n");
+        for (GraphExpansionRow row : rows) {
+            if ("DISCLOSURE".equals(row.kind())) {
+                sb.append("- [지분공시] 제출인 ").append(row.primaryName())
+                        .append("이(가) 공시한 \"").append(row.secondaryName()).append("\"");
+                if (row.relatedCorpCode() != null) {
+                    sb.append(" | 같은 제출인이 지분을 공시한 다른 기업: ")
+                            .append(row.relatedCorpName()).append(" (").append(row.relatedCorpCode()).append(")");
+                }
+            } else {
+                sb.append("- [뉴스] \"").append(row.secondaryName()).append("\" (").append(row.primaryName())
+                        .append(") 기사는 ").append(row.relatedCorpName()).append("에 대해서도 다룸");
+            }
+            sb.append("\n");
         }
         return sb.toString();
     }

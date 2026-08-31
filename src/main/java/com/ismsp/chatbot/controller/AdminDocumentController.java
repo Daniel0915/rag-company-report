@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.ismsp.chatbot.dto.AdminDocumentDto;
 import com.ismsp.chatbot.service.AdminDocumentService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,13 +17,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/admin/documents")
+@RequiredArgsConstructor
 public class AdminDocumentController {
 
     private final AdminDocumentService adminDocumentService;
-
-    public AdminDocumentController(AdminDocumentService adminDocumentService) {
-        this.adminDocumentService = adminDocumentService;
-    }
 
     @GetMapping
     public List<AdminDocumentDto> list() {

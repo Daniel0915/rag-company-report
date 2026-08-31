@@ -2,18 +2,16 @@ package com.ismsp.chatbot.controller;
 
 import com.ismsp.chatbot.dto.IndexedChunkPage;
 import com.ismsp.chatbot.service.IndexedChunkService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequiredArgsConstructor
 public class IndexedChunkController {
 
     private final IndexedChunkService indexedChunkService;
-
-    public IndexedChunkController(IndexedChunkService indexedChunkService) {
-        this.indexedChunkService = indexedChunkService;
-    }
 
     /** 어드민 뷰어: 실제로 Neo4j에 색인된 청크를 기업/공시유형으로 필터링해서 조회한다. */
     @GetMapping("/api/admin/indexed-chunks")

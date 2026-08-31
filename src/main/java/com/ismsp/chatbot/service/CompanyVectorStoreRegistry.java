@@ -5,6 +5,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import com.ismsp.chatbot.dart.dto.WatchedCompany;
 import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
 import org.neo4j.driver.Driver;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -22,16 +23,12 @@ import org.springframework.stereotype.Component;
  * 대신 시작 시점에 전부 미리 만들어둔다.
  */
 @Component
+@RequiredArgsConstructor
 public class CompanyVectorStoreRegistry {
 
     private final Driver driver;
     private final EmbeddingModel embeddingModel;
     private final Map<String, VectorStore> stores = new ConcurrentHashMap<>();
-
-    public CompanyVectorStoreRegistry(Driver driver, EmbeddingModel embeddingModel) {
-        this.driver = driver;
-        this.embeddingModel = embeddingModel;
-    }
 
     @PostConstruct
     void initWatchlist() {
